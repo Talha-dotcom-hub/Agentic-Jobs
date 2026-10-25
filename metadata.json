@@ -1,0 +1,6 @@
+{
+  "name": "Agentic Jobs",
+  "description": "AI-powered job discovery, resume matching, recommendation, and application-tracking platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

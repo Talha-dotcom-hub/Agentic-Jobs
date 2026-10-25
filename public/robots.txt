@@ -1,0 +1,25 @@
+# robots.txt for Agentic Jobs
+User-agent: *
+Allow: /
+Allow: /features
+Allow: /about
+Allow: /faq
+Allow: /contact
+Allow: /privacy
+Allow: /cookie
+Allow: /terms
+Allow: /accessibility
+
+# Disallow private user dashboard and app shell routes
+Disallow: /dashboard
+Disallow: /discover
+Disallow: /recommended
+Disallow: /saved
+Disallow: /resume
+Disallow: /applications
+Disallow: /schedule
+Disallow: /notifications
+Disallow: /settings
+Disallow: /api/
+
+Sitemap: https://agenticjobs.dev/sitemap.xml
