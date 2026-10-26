@@ -113,7 +113,31 @@ Education: B.S. in Computer Science.`;
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [activeView, setActiveView] = useState<ActiveView>('home');
+  const [activeView, setActiveViewState] = useState<ActiveView>('home');
+  const activeViewRef = useRef<ActiveView>('home');
+  const viewHistoryRef = useRef<ActiveView[]>(['home']);
+
+  const setActiveView = useCallback((view: ActiveView) => {
+    if (activeViewRef.current === view) return;
+
+    if (view === 'home') {
+      viewHistoryRef.current = ['home'];
+      window.history.replaceState({ agenticJobsView: view }, '');
+    } else if (
+      view === 'dashboard' &&
+      (activeViewRef.current === 'login' || activeViewRef.current === 'signup')
+    ) {
+      viewHistoryRef.current = ['home', 'dashboard'];
+      window.history.replaceState({ agenticJobsView: 'home' }, '');
+      window.history.pushState({ agenticJobsView: view }, '');
+    } else {
+      viewHistoryRef.current.push(view);
+      window.history.pushState({ agenticJobsView: view }, '');
+    }
+
+    activeViewRef.current = view;
+    setActiveViewState(view);
+  }, []);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [user, setUser] = useState<UserProfile>({
     id: '',
@@ -196,46 +220,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Smart Mobile Back Navigation & Popstate handler
+  // Mobile Back follows in-app navigation history.
   useEffect(() => {
-    window.history.replaceState({ view: activeView }, '');
-
-    let lastBackPressTimestamp = 0;
+    window.history.replaceState(
+      { ...(window.history.state || {}), agenticJobsView: activeViewRef.current },
+      ''
+    );
 
     const handlePopState = () => {
-      // Priority 1: Dismiss topmost modal/drawer if open
+      const currentView = activeViewRef.current;
+
+      // Close the top modal/drawer before leaving the current screen.
       if (overlaysRef.current.length > 0) {
         const top = overlaysRef.current.pop();
-        if (top) {
-          top.closeFn();
-        }
-        window.history.pushState({ view: activeView }, '');
+        if (top) top.closeFn();
+        window.history.pushState({ agenticJobsView: currentView }, '');
         return;
       }
 
-      // Priority 2: In-app subview navigation reverts to Dashboard
-      if (activeView !== 'dashboard' && activeView !== 'home') {
-        window.history.pushState({ view: 'dashboard' }, '');
-        setActiveView('dashboard');
-        return;
+      const stack = viewHistoryRef.current;
+      if (stack.length > 1) {
+        if (stack[stack.length - 1] === currentView) stack.pop();
+        const previousView = stack[stack.length - 1] || 'home';
+        activeViewRef.current = previousView;
+        setActiveViewState(previousView);
       }
-
-      // Priority 3: Dashboard root view requires double-press confirmation to exit
-      if (activeView === 'dashboard') {
-        const now = Date.now();
-        if (now - lastBackPressTimestamp < 2500) {
-          return;
-        }
-
-        lastBackPressTimestamp = now;
-        window.history.pushState({ view: 'dashboard' }, '');
-        showToast('Press Back again to exit Agentic Jobs', 'info');
-      }
+      // At the first screen, allow the platform's normal Back behavior.
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeView, showToast]);
+  }, []);
 
   // URL / Path / Recovery Listener (e.g. from Push Notification click or reset email)
   useEffect(() => {
@@ -452,15 +467,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         preferences: user.preferences,
       });
     } else {
-      setUser({
-        id: `user-${Date.now()}`,
-        email,
-        name: name || email.split('@')[0],
-        isAuthenticated: true,
-        role: 'Candidate',
-        joinedDate: 'October 2026',
-        preferences: user.preferences,
-      });
+      showToast(
+        'Sign-in is unavailable because Supabase is not configured. Check the Netlify environment variables and redeploy.',
+        'error'
+      );
+      return;
     }
 
     setIsDemoMode(false);
@@ -474,6 +485,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         email,
         password,
         options: {
+          emailRedirectTo: window.location.origin,
           data: { full_name: name },
         },
       });
@@ -506,17 +518,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    setUser((prev) => ({
-      ...prev,
-      id: `user-${Date.now()}`,
-      email,
-      name,
-      isAuthenticated: true,
-    }));
-    setIsDemoMode(false);
-    setActiveView('dashboard');
-    showToast('Account created successfully!', 'success');
-    return { success: true, confirmationRequired: false };
+    showToast(
+      isSupabaseConfigured
+        ? 'Supabase did not establish a signup session. Check its Auth and email-confirmation settings.'
+        : 'Sign-up is unavailable because Supabase is not configured. Check the Netlify environment variables and redeploy.',
+      'error'
+    );
+    return { success: false, confirmationRequired: false };
   };
 
   const logoutUser = async () => {
@@ -530,16 +538,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const resetUserPassword = async (email: string) => {
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-      if (error) {
-        showToast(error.message, 'error');
-        return;
-      }
+    if (!isSupabaseConfigured) {
+      showToast(
+        'Password reset is unavailable because Supabase is not configured. Please try again later.',
+        'error'
+      );
+      return;
     }
-    showToast(`Password recovery link dispatched to ${email}.`, 'success');
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+
+    showToast(
+      'If an account exists for that email, a recovery link will be sent. Check your inbox and spam folder.',
+      'success'
+    );
   };
 
   const deleteUserAccount = async () => {
