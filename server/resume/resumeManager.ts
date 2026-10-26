@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type } from '@google/genai';
+import { generateWithGeminiFallback } from '../ai/geminiFallback.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,16 +13,6 @@ const RESUME_FILE = path.join(DATA_DIR, 'resumes.json');
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
-
-// Initialize Gemini SDK
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
 
 export interface WorkExperienceItem {
   jobTitle: string;
@@ -166,10 +157,13 @@ export function extractDeterministicProfile(resumeText: string, fileName?: strin
 // AI-Powered structured extraction with Google GenAI SDK
 export async function extractStructuredResumeProfile(
   resumeText: string,
-  fileName?: string
+  fileName?: string,
+  apiKeyOverride?: string,
 ): Promise<{ profile: StructuredProfessionalProfile; skills: string[]; role: string }> {
-  // If no Gemini key or text is very short, use deterministic extraction
-  if (!process.env.GEMINI_API_KEY || resumeText.trim().length < 40) {
+  // Use the signed-in user key first, then an optional service-level key.
+  const activeApiKey = apiKeyOverride || process.env.GEMINI_API_KEY;
+  // Without a key, keep deterministic extraction honest and available.
+  if (!activeApiKey || resumeText.trim().length < 40) {
     const fallbackProfile = extractDeterministicProfile(resumeText, fileName);
     return {
       profile: fallbackProfile,
@@ -191,8 +185,7 @@ RESUME CONTENT:
 ${resumeText.slice(0, 4500)}
 """`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const { response } = await generateWithGeminiFallback(activeApiKey, {
       contents: prompt,
       config: {
         responseMimeType: 'application/json',

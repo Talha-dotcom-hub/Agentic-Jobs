@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { TiltCard } from '../../components/common/TiltCard';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
+import { getGeminiKeyStatus, saveGeminiApiKey } from '../../services/api';
 
 export const MyResume: React.FC = () => {
   const { resume, updateResume, reprocessResumeProfile, deleteResumeProfile, showToast } = useApp();
@@ -28,6 +29,36 @@ export const MyResume: React.FC = () => {
   const [reprocessing, setReprocessing] = useState(false);
   const [activeTab, setActiveTab] = useState<'structured' | 'editor'>('structured');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [geminiSetupOpen, setGeminiSetupOpen] = useState(false);
+  const [geminiSetupKey, setGeminiSetupKey] = useState('');
+  const [geminiSetupSaving, setGeminiSetupSaving] = useState(false);
+  const promptForGeminiIfMissing = async () => {
+    try {
+      const status = await getGeminiKeyStatus();
+      if (!status.configured) setGeminiSetupOpen(true);
+    } catch {
+      // A failed status check should not block resume upload; invite the user to configure the key.
+      setGeminiSetupOpen(true);
+    }
+  };
+  const handleSaveGeminiSetupKey = async () => {
+    if (!geminiSetupKey.trim()) {
+      showToast('Paste your Gemini API key to enable AI matching.', 'error');
+      return;
+    }
+    setGeminiSetupSaving(true);
+    try {
+      await saveGeminiApiKey(geminiSetupKey.trim());
+      setGeminiSetupKey('');
+      setGeminiSetupOpen(false);
+      showToast('Gemini key encrypted and saved. Refreshing your resume profile with AI...', 'success');
+      await reprocessResumeProfile();
+    } catch (error: any) {
+      showToast(error?.message || 'Could not save Gemini API key. Check Settings/backend configuration.', 'error');
+    } finally {
+      setGeminiSetupSaving(false);
+    }
+  };
 
   // Sync state if context resume changes
   React.useEffect(() => {
@@ -48,6 +79,7 @@ export const MyResume: React.FC = () => {
       setSaving(true);
       await updateResume(content, file.name, file);
       setSaving(false);
+      await promptForGeminiIfMissing();
     };
     reader.readAsText(file);
   };
@@ -56,6 +88,7 @@ export const MyResume: React.FC = () => {
     setSaving(true);
     await updateResume(resumeText, resumeName);
     setSaving(false);
+    if (resumeText.trim()) await promptForGeminiIfMissing();
   };
 
   const handleReprocess = async () => {
@@ -375,6 +408,26 @@ export const MyResume: React.FC = () => {
         </div>
       )}
 
+      {geminiSetupOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="gemini-setup-title" className="w-full max-w-lg rounded-2xl border border-violet-500/40 bg-[#0B0F19] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center"><Sparkles className="w-5 h-5 text-violet-300" /></div>
+              <div>
+                <h3 id="gemini-setup-title" className="text-lg font-bold text-white">Connect Gemini to activate your AI agent</h3>
+                <p className="text-xs text-slate-400 mt-1">Your resume is saved. Add your own Google Gemini API key for profile extraction, job matching and scheduled AI scoring.</p>
+              </div>
+            </div>
+            <label className="block text-xs font-medium text-slate-300">Gemini API key</label>
+            <input type="password" autoComplete="new-password" value={geminiSetupKey} onChange={(e) => setGeminiSetupKey(e.target.value)} placeholder="Paste Gemini API key" className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-violet-500" />
+            <p className="text-[11px] text-slate-500">Key is encrypted on the backend and never sent back to the browser. Do not paste it into chat or GitHub. Model fallbacks cannot bypass project-wide quota exhaustion.</p>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setGeminiSetupOpen(false)} className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800">Later</button>
+              <button type="button" onClick={handleSaveGeminiSetupKey} disabled={geminiSetupSaving || !geminiSetupKey.trim()} className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 text-white font-semibold disabled:opacity-50">{geminiSetupSaving ? 'Saving securely...' : 'Save Key & Enable Agent'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}

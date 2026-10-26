@@ -3,7 +3,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -33,16 +33,6 @@ app.use(applySecurityHeaders);
 const geminiRateLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 15, message: 'Gemini match evaluation rate limit exceeded. Please wait a minute.' });
 const scanRateLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 10, message: 'Scan rate limit exceeded.' });
 const jobAddRateLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 20 });
-
-// Initialize Google Gen AI client with server-side API Key
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
 
 // Mock/Initial In-Memory Database for Demo & Functional Real Server operations
 let savedJobsStore: any[] = [];
@@ -89,6 +79,8 @@ import {
   StoredResumeRecord,
 } from './server/resume/resumeManager';
 import { initSchedulerWorker, processDueScans } from './server/scheduler/schedulerWorker';
+import { generateWithGeminiFallback } from './server/ai/geminiFallback';
+import { encryptGeminiApiKey, getUserGeminiApiKey } from './server/credentials/geminiCredentialVault';
 import {
   createAuthMiddleware,
   createOptionalAuthMiddleware,
@@ -111,6 +103,55 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Per-user Gemini credentials: encrypted at rest; raw keys are never returned to the browser.
+app.get('/api/settings/gemini-key', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId || !supabase) return res.status(503).json({ error: 'Authenticated Supabase backend is not configured.' });
+  try {
+    const { data, error } = await supabase
+      .from('user_ai_credentials')
+      .select('key_hint, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return res.json({ configured: Boolean(data), keyHint: data?.key_hint || null, updatedAt: data?.updated_at || null });
+  } catch (error: any) {
+    console.error('Gemini credential status error:', error?.message || error);
+    return res.status(503).json({ error: 'Gemini key storage is not ready. Apply the new Supabase migration and configure GEMINI_CREDENTIALS_ENCRYPTION_KEY on the backend.' });
+  }
+});
+app.put('/api/settings/gemini-key', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+  if (!userId) return res.status(401).json({ error: 'Authentication required.' });
+  if (!supabase) return res.status(503).json({ error: 'Supabase backend is not configured.' });
+  if (apiKey.length < 20 || apiKey.length > 512) return res.status(400).json({ error: 'Enter a valid-looking Gemini API key (20â€“512 characters).' });
+  try {
+    const encrypted = encryptGeminiApiKey(apiKey);
+    const updatedAt = new Date().toISOString();
+    const { error } = await supabase.from('user_ai_credentials').upsert({
+      user_id: userId,
+      encrypted_key: encrypted.ciphertext,
+      iv: encrypted.iv,
+      auth_tag: encrypted.authTag,
+      key_hint: `â€¢â€¢â€¢â€¢${apiKey.slice(-4)}`,
+      updated_at: updatedAt,
+    }, { onConflict: 'user_id' });
+    if (error) throw error;
+    return res.json({ configured: true, keyHint: `â€¢â€¢â€¢â€¢${apiKey.slice(-4)}`, updatedAt, message: 'Key encrypted and saved. Model access will be verified on the next AI request.' });
+  } catch (error: any) {
+    console.error('Gemini credential save error:', error?.message || error);
+    return res.status(503).json({ error: 'Could not securely save the Gemini key. Confirm the Supabase migration and GEMINI_CREDENTIALS_ENCRYPTION_KEY backend secret.' });
+  }
+});
+app.delete('/api/settings/gemini-key', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Authentication required.' });
+  if (!supabase) return res.status(503).json({ error: 'Supabase backend is not configured.' });
+  const { error } = await supabase.from('user_ai_credentials').delete().eq('user_id', userId);
+  if (error) return res.status(503).json({ error: 'Could not remove the Gemini key. Check backend database configuration.' });
+  return res.json({ configured: false, message: 'Gemini key removed.' });
+});
 // Web Push VAPID Public Key Endpoint
 app.get('/api/push/vapid-key', (req, res) => {
   res.json({ publicKey: getVapidPublicKey() });
@@ -249,6 +290,51 @@ app.get('/api/jobs/search', async (req, res) => {
   }
 });
 
+app.get('/api/jobs/recommended', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId || !supabase) return res.status(503).json({ error: 'Authenticated Supabase backend is not configured.' });
+  try {
+    const { data, error } = await supabase
+      .from('user_discovered_jobs')
+      .select('*')
+      .eq('user_id', userId)
+      .not('match_score', 'is', null)
+      .order('last_seen_at', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    const jobs = (data || []).map((row: any) => ({
+      id: row.job_key,
+      title: row.title,
+      company: row.company,
+      companyLogo: row.company_logo || undefined,
+      location: row.location || 'Unspecified',
+      source: row.source,
+      postedDate: row.posted_date || row.last_seen_at,
+      matchScore: Number(row.match_score),
+      salary: row.salary || undefined,
+      type: row.employment_type || 'Full-time',
+      experienceLevel: row.experience_level || 'Entry-Level',
+      workplaceType: row.workplace_type || 'Remote',
+      originalUrl: row.original_url,
+      description: row.description || '',
+      skillsRequired: Array.isArray(row.skills_required) ? row.skills_required : [],
+      verified: Boolean(row.verified),
+      isStale: Boolean(row.is_stale),
+      matchResult: {
+        score: Number(row.match_score),
+        summary: 'Estimated role fit based on your saved resume and the job listing; not a hiring probability.',
+        matchingEvidence: Array.isArray(row.matching_evidence) ? row.matching_evidence : [],
+        potentialSkillGaps: Array.isArray(row.potential_skill_gaps) ? row.potential_skill_gaps : [],
+        eligibilityWarnings: Array.isArray(row.eligibility_warnings) ? row.eligibility_warnings : [],
+        isFallback: false,
+      },
+    }));
+    return res.json(jobs);
+  } catch (error: any) {
+    console.error('Recommended jobs query failed:', error?.message || error);
+    return res.status(503).json({ error: 'Recommended-job storage is not ready. Apply the latest Supabase migration.' });
+  }
+});
 // Source Connectors Status Endpoint
 app.get('/api/sources', (req, res) => {
   const statuses = registeredConnectors.map((c) => ({
@@ -260,97 +346,68 @@ app.get('/api/sources', (req, res) => {
   res.json(statuses);
 });
 
-// Gemini Resume Matching Endpoint (Rate limited & Prompt sanitized)
-app.post('/api/gemini/match', geminiRateLimiter, async (req, res) => {
+// Gemini Resume Matching Endpoint (rate limited, authenticated per-user credentials, real model fallback)
+app.post('/api/gemini/match', optionalAuth, geminiRateLimiter, async (req: AuthenticatedRequest, res) => {
   try {
     const { jobTitle, jobCompany, jobDescription, resumeText } = req.body;
-
-    if (!jobDescription || !jobTitle) {
-      return res.status(400).json({ error: 'Job title and description are required.' });
-    }
-
+    if (!jobDescription || !jobTitle) return res.status(400).json({ error: 'Job title and description are required.' });
     const cleanTitle = sanitizePromptInput(jobTitle, 150);
-    const cleanCompany = sanitizePromptInput(jobCompany, 150);
+    const cleanCompany = sanitizePromptInput(jobCompany || '', 150);
     const cleanDescription = sanitizePromptInput(jobDescription, 2500);
-    const activeResume = sanitizePromptInput(resumeText || userResumeStore.text, 2500);
+    const activeResume = sanitizePromptInput(resumeText || '', 4500);
 
-    if (!process.env.GEMINI_API_KEY) {
-      // Fallback deterministic evaluator when GEMINI_API_KEY is not set
-      const skillsToMatch = ['TypeScript', 'React', 'Node.js', 'Express', 'Python', 'AWS', 'PostgreSQL', 'Docker', 'GraphQL', 'Tailwind'];
-      const matched = skillsToMatch.filter(skill =>
-        cleanDescription.toLowerCase().includes(skill.toLowerCase()) &&
-        activeResume.toLowerCase().includes(skill.toLowerCase())
-      );
-      const gaps = skillsToMatch.filter(skill =>
-        cleanDescription.toLowerCase().includes(skill.toLowerCase()) &&
-        !activeResume.toLowerCase().includes(skill.toLowerCase())
-      );
-
-      const score = Math.min(96, Math.max(65, 70 + matched.length * 4 - gaps.length * 3));
-
-      return res.json({
-        score,
-        summary: `Strong candidate match for ${cleanTitle} at ${cleanCompany}. Demonstrated core competency in ${matched.slice(0, 3).join(', ')}.`,
-        matchingEvidence: matched.map(m => `Proven hands-on experience in ${m} mentioned in resume experience.`),
-        potentialSkillGaps: gaps.length > 0 ? gaps.map(g => `${g} required in job posting is not explicitly highlighted in resume text.`) : ['No major skill gaps identified.'],
-        eligibilityWarnings: cleanDescription.toLowerCase().includes('clearance') ? ['Security Clearance may be required for this position.'] : [],
-        isFallback: true,
-      });
+    let apiKey = process.env.GEMINI_API_KEY || '';
+    if (req.user?.id && supabase) {
+      const personalKey = await getUserGeminiApiKey(req.user.id, supabase);
+      if (personalKey) apiKey = personalKey;
     }
+    if (!apiKey) return res.status(428).json({ error: 'Connect your Gemini API key in Settings to run real AI matching. No fabricated match score was generated.' });
 
-    const prompt = `You are an expert AI talent evaluator. Analyze the following job posting against the candidate's resume.
-Provide a objective, highly realistic estimated match score between 0 and 100.
-Do NOT fabricate skills that are missing from the resume. Phrase skill gaps cautiously as "Not explicitly mentioned in resume text" rather than claiming the user lacks the skill.
-
+    const prompt = `You are a precise career-matching assistant. Estimate fit from 0 to 100 using only evidence in the supplied resume and job posting. This is not a hiring probability. Never invent skills or experience.
 JOB TITLE: ${cleanTitle}
 COMPANY: ${cleanCompany || 'N/A'}
 JOB DESCRIPTION:
 ${cleanDescription}
-
 CANDIDATE RESUME:
-${activeResume}
-`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+${activeResume}`;
+    const { response, model } = await generateWithGeminiFallback(apiKey, {
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            score: { type: Type.INTEGER, description: 'Match score from 0 to 100' },
-            summary: { type: Type.STRING, description: 'Concise explanation of the estimated match score' },
-            matchingEvidence: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: 'Key candidate skills and requirements supported by resume evidence',
-            },
-            potentialSkillGaps: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: 'Requirements mentioned in job description not explicitly highlighted in resume',
-            },
-            eligibilityWarnings: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: 'Work authorization, clearance, or location requirements',
-            },
+            score: { type: Type.INTEGER, description: 'Estimated fit score from 0 to 100, not hiring probability' },
+            summary: { type: Type.STRING },
+            matchingEvidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+            potentialSkillGaps: { type: Type.ARRAY, items: { type: Type.STRING } },
+            eligibilityWarnings: { type: Type.ARRAY, items: { type: Type.STRING } },
           },
           required: ['score', 'summary', 'matchingEvidence', 'potentialSkillGaps', 'eligibilityWarnings'],
         },
       },
     });
-
     const parsed = JSON.parse(response.text || '{}');
-    return res.json(parsed);
+    const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+    return res.json({
+      score,
+      summary: String(parsed.summary || 'Estimated match based on supplied resume and job evidence.'),
+      matchingEvidence: Array.isArray(parsed.matchingEvidence) ? parsed.matchingEvidence : [],
+      potentialSkillGaps: Array.isArray(parsed.potentialSkillGaps) ? parsed.potentialSkillGaps : [],
+      eligibilityWarnings: Array.isArray(parsed.eligibilityWarnings) ? parsed.eligibilityWarnings : [],
+      modelUsed: model,
+      isFallback: model !== 'gemini-3.8-flash',
+    });
   } catch (error: any) {
-    console.error('Gemini match error:', error);
-    return res.status(500).json({ error: error.message || 'Failed to process AI resume match.' });
+    console.error('Gemini match error:', error?.message || error);
+    if (error?.name === 'GeminiFallbackExhaustedError') {
+      return res.status(429).json({ error: error.message, code: 'GEMINI_FALLBACK_EXHAUSTED' });
+    }
+    const message = String(error?.message || 'Failed to process AI resume match.');
+    return res.status(Number(error?.status) >= 400 && Number(error?.status) < 600 ? Number(error.status) : 502)
+      .json({ error: message });
   }
-});
-
-// Manual Job Creation
+});// Manual Job Creation
 app.post('/api/jobs/add', (req, res) => {
   const newJob = {
     id: `custom-${Date.now()}`,
@@ -372,25 +429,61 @@ app.post('/api/jobs/add', (req, res) => {
   res.json(newJob);
 });
 
-// Trigger Discovery Scan
-app.post('/api/scan/trigger', async (req, res) => {
-  scanScheduleStore.status = 'running';
-
-  // Simulate active scanning across Apify, RapidAPI, public APIs
-  setTimeout(() => {
-    scanScheduleStore.lastScanTime = new Date().toISOString();
-    const intervalMs = scanScheduleStore.frequencyType === 'hourly'
-      ? scanScheduleStore.frequencyValue * 3600000
-      : scanScheduleStore.frequencyValue * 86400000;
-    scanScheduleStore.nextScanTime = new Date(Date.now() + intervalMs).toISOString();
-    scanScheduleStore.status = 'completed';
-    scanScheduleStore.lastSuccessfulScanJobsCount = Math.floor(Math.random() * 8) + 12;
-  }, 1200);
-
-  res.json({ message: 'Scan initiated across configured job sources.', schedule: scanScheduleStore });
-});
-
-// Schedule Get/Update with strict interval validation
+// Trigger a real discovery/matching run for the authenticated user.
+app.post('/api/scan/trigger', requireAuth, scanRateLimiter, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId || !supabase) return res.status(503).json({ error: 'Authenticated Supabase backend is not configured.' });
+  try {
+    const resume = await getPersistedResume(userId, supabase);
+    if (!resume?.text?.trim()) return res.status(400).json({ error: 'Upload and save your resume before running a scan.' });
+    const { data: savedSchedule, error: scheduleReadError } = await supabase
+      .from('scan_schedules').select('*').eq('user_id', userId).maybeSingle();
+    if (scheduleReadError) throw scheduleReadError;
+    const frequencyType = savedSchedule?.frequency_type === 'daily' ? 'daily' : 'hourly';
+    const frequencyValue = Number(savedSchedule?.frequency_value || 4);
+    scanScheduleStore.status = 'running';
+    const result = await executeScheduledUserScan({
+      userId,
+      enabled: true,
+      frequencyType,
+      frequencyValue,
+      timezone: savedSchedule?.timezone || 'UTC',
+      lastScanTime: savedSchedule?.last_scan_time || new Date(0).toISOString(),
+      nextScanTime: savedSchedule?.next_scan_time || new Date().toISOString(),
+      resumeText: resume.text,
+    }, supabase);
+    const completedAt = new Date().toISOString();
+    const schedulePatch = {
+      user_id: userId,
+      enabled: savedSchedule?.enabled ?? true,
+      frequency_type: frequencyType,
+      frequency_value: frequencyValue,
+      is_scanning: false,
+      last_scan_time: completedAt,
+      next_scan_time: result.nextScanTime,
+      last_successful_scan_jobs_count: result.jobsDiscovered,
+      status: result.success ? 'completed' : 'error',
+      updated_at: completedAt,
+    };
+    const { error: scheduleSaveError } = await supabase.from('scan_schedules').upsert(schedulePatch, { onConflict: 'user_id' });
+    if (scheduleSaveError) console.warn('Could not update scan schedule after manual scan:', scheduleSaveError.message);
+    scanScheduleStore = {
+      ...scanScheduleStore,
+      status: result.success ? 'completed' : 'error',
+      lastScanTime: completedAt,
+      nextScanTime: result.nextScanTime,
+      lastSuccessfulScanJobsCount: result.jobsDiscovered,
+    };
+    if (!result.success) return res.status(503).json(result);
+    let aiScoringConfigured = Boolean(result.aiScoringConfigured);
+    try { aiScoringConfigured = Boolean((await getUserGeminiApiKey(userId, supabase)) || process.env.GEMINI_API_KEY); } catch { /* the scan result still carries its actual scoring status */ }
+    return res.json({ ...result, aiScoringConfigured, aiScoringExhausted: Boolean(result.aiScoringExhausted), message: result.aiScoringExhausted || (result.jobsDiscovered > 0 && aiScoringConfigured && Number(result.scoredJobsCount || 0) === 0) ? 'Job discovery completed, but AI scoring was unavailable or quota-limited; scores remain pending.' : aiScoringConfigured ? 'Live job discovery and available AI scoring completed.' : 'Live job discovery completed; AI scoring waits for a Gemini API key.' });
+  } catch (error: any) {
+    scanScheduleStore.status = 'error';
+    console.error('Real scan trigger failed:', error?.message || error);
+    return res.status(502).json({ error: error?.message || 'Live scan could not complete.' });
+  }
+});// Schedule Get/Update with strict interval validation
 const ALLOWED_HOURLY_INTERVALS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24];
 const ALLOWED_DAILY_INTERVALS = [1, 2, 3, 4, 5];
 
@@ -492,7 +585,11 @@ app.post('/api/resume', optionalAuth, async (req: AuthenticatedRequest, res) => 
     }
 
     const existing = await getPersistedResume(userId, supabase);
-    const extraction = await extractStructuredResumeProfile(text, name);
+    let userGeminiKey: string | null = null;
+    if (req.user?.id && supabase) {
+      try { userGeminiKey = await getUserGeminiApiKey(req.user.id, supabase); } catch (keyError: any) { console.warn('User Gemini key unavailable during resume extraction:', keyError?.message || keyError); }
+    }
+    const extraction = await extractStructuredResumeProfile(text, name, userGeminiKey || undefined);
 
     const record: StoredResumeRecord = {
       userId,
@@ -521,7 +618,11 @@ app.post('/api/resume/extract', optionalAuth, async (req: AuthenticatedRequest, 
       const persisted = await getPersistedResume(userId, supabase);
       resumeContent = persisted.text;
     }
-    const result = await extractStructuredResumeProfile(resumeContent, req.body.name);
+    let userGeminiKey: string | null = null;
+    if (req.user?.id && supabase) {
+      try { userGeminiKey = await getUserGeminiApiKey(req.user.id, supabase); } catch (keyError: any) { console.warn('User Gemini key unavailable during profile reprocess:', keyError?.message || keyError); }
+    }
+    const result = await extractStructuredResumeProfile(resumeContent, req.body.name, userGeminiKey || undefined);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to extract resume profile' });

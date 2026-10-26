@@ -1,4 +1,4 @@
-import { MatchResult, ScanSchedule, Resume } from '../types';
+import { Job, MatchResult, ScanSchedule, Resume } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -18,6 +18,43 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+export interface GeminiKeyStatus {
+  configured: boolean;
+  keyHint?: string | null;
+  updatedAt?: string | null;
+}
+export async function getGeminiKeyStatus(): Promise<GeminiKeyStatus> {
+  const res = await fetch('/api/settings/gemini-key', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Gemini key status failed (${res.status}).`);
+  return body as GeminiKeyStatus;
+}
+export async function saveGeminiApiKey(apiKey: string): Promise<GeminiKeyStatus> {
+  const res = await fetch('/api/settings/gemini-key', {
+    method: 'PUT',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ apiKey }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Gemini key save failed (${res.status}).`);
+  return body as GeminiKeyStatus;
+}
+export async function deleteGeminiApiKey(): Promise<void> {
+  const res = await fetch('/api/settings/gemini-key', { method: 'DELETE', headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Gemini key deletion failed (${res.status}).`);
+}
+export async function fetchRecommendedJobsApi(): Promise<Job[]> {
+  try {
+    const res = await fetch('/api/jobs/recommended', { headers: await getAuthHeaders() });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Array.isArray(body) ? body as Job[] : [];
+  } catch (error) {
+    console.warn('Recommended jobs fetch warning:', error);
+    return [];
+  }
+}
 export async function fetchHealthStatus() {
   try {
     const res = await fetch('/api/health');
@@ -35,55 +72,22 @@ export async function matchResumeWithJob(
   jobDescription: string,
   resumeText?: string
 ): Promise<MatchResult> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/gemini/match', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        jobTitle,
-        jobCompany,
-        jobDescription,
-        resumeText,
-      }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || `Server responded with status ${res.status}`);
-    }
-
-    return await res.json();
-  } catch (err: any) {
-    console.warn('API call failed, generating localized evaluator result:', err);
-    return {
-      score: 85,
-      summary: `Estimated match for ${jobTitle} at ${jobCompany}. Core alignment with key full-stack software requirements.`,
-      matchingEvidence: [
-        'Matches candidate experience in TypeScript, React, Node.js, and cloud application design.'
-      ],
-      potentialSkillGaps: [
-        'Domain-specific secondary tool requirements not explicitly mentioned in resume text.'
-      ],
-      eligibilityWarnings: [],
-      isFallback: true,
-    };
-  }
-}
-
-export async function triggerDiscoveryScan() {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/scan/trigger', { method: 'POST', headers });
-    if (!res.ok) throw new Error('Scan failed');
-    return await res.json();
-  } catch (err) {
-    console.warn('Server trigger scan warning:', err);
-    return { message: 'Scan executed in client preview mode.' };
-  }
-}
-
-export async function fetchScanSchedule(): Promise<ScanSchedule> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/gemini/match', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ jobTitle, jobCompany, jobDescription, resumeText }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Gemini matching failed (${res.status}).`);
+  return body as MatchResult;
+}export async function triggerDiscoveryScan(): Promise<{ success: boolean; jobsDiscovered: number; newJobsFound: number; highMatchJobsCount: number; nextScanTime: string; aiScoringConfigured?: boolean; aiScoringExhausted?: boolean; scoredJobsCount?: number; message?: string; error?: string }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/scan/trigger', { method: 'POST', headers });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Live scan failed (${res.status}).`);
+  return body;
+}export async function fetchScanSchedule(): Promise<ScanSchedule> {
   try {
     const headers = await getAuthHeaders();
     const res = await fetch('/api/schedule', { headers });

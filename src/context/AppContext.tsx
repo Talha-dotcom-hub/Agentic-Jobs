@@ -20,6 +20,7 @@ import {
   extractResumeProfileApi,
   deleteResumeApi,
   deleteAccountApi,
+  fetchRecommendedJobsApi,
 } from '../services/api';
 import { supabase, isSupabaseConfigured, uploadResumeFile } from '../lib/supabase';
 import { subscribeUserToWebPush } from '../lib/pushClient';
@@ -427,7 +428,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           })));
         }
 
-        // 4. Load scan schedule
+        // 4. Load genuinely scored recommendations from durable scan results.
+        const recommendations = await fetchRecommendedJobsApi();
+        if (recommendations.length > 0) setJobs(recommendations);
+        // 5. Load scan schedule
         const { data: sched } = await supabase
           .from('scan_schedules')
           .select('*')
@@ -661,25 +665,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const evaluateJobMatch = async (jobId: string): Promise<MatchResult | null> => {
     const targetJob = jobs.find((j) => j.id === jobId);
     if (!targetJob) return null;
-
-    showToast(`Evaluating resume match using Google Gemini...`, 'info');
-    const result = await matchResumeWithJob(
-      targetJob.title,
-      targetJob.company,
-      targetJob.description,
-      resume.text
-    );
-
-    setJobs((prev) =>
-      prev.map((j) =>
-        j.id === jobId ? { ...j, matchScore: result.score, matchResult: result } : j
-      )
-    );
-
-    showToast(`Match score calculated: ${result.score}%`, 'success');
-    return result;
+    showToast('Evaluating resume match using Gemini model fallback...', 'info');
+    try {
+      const result = await matchResumeWithJob(targetJob.title, targetJob.company, targetJob.description, resume.text);
+      setJobs((prev) => prev.map((j) => j.id === jobId ? { ...j, matchScore: result.score, matchResult: result } : j));
+      showToast(`Match score calculated: ${result.score}% using real AI evaluation.`, 'success');
+      return result;
+    } catch (error: any) {
+      showToast(error?.message || 'AI matching failed. Connect Gemini in Settings and retry.', 'error');
+      return null;
+    }
   };
-
   const addApplication = async (appData: Partial<Application>) => {
     const newApp: Application = {
       id: `app-${Date.now()}`,
@@ -812,21 +808,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const runScanNow = async () => {
     setSchedule((prev) => ({ ...prev, status: 'running' }));
-    showToast('Scanning Apify & RapidAPI job feeds for new matches...', 'info');
-
-    await triggerDiscoveryScan();
-
-    setTimeout(() => {
+    showToast('Running live job-source discovery and AI matching...', 'info');
+    try {
+      const result = await triggerDiscoveryScan();
+      const recommendations = await fetchRecommendedJobsApi();
+      if (recommendations.length > 0) setJobs(recommendations);
+      const completedAt = new Date().toISOString();
       setSchedule((prev) => ({
         ...prev,
-        status: 'idle',
-        lastScanTime: new Date().toISOString(),
-        lastSuccessfulScanJobsCount: prev.lastSuccessfulScanJobsCount + 3,
+        status: 'completed',
+        lastScanTime: completedAt,
+        nextScanTime: result.nextScanTime || prev.nextScanTime,
+        lastSuccessfulScanJobsCount: Number(result.jobsDiscovered || 0),
       }));
-      showToast('Scan complete! 3 new high-matching opportunities indexed.', 'success');
-    }, 1200);
+      if (result.aiScoringExhausted || (result.jobsDiscovered > 0 && result.aiScoringConfigured && Number(result.scoredJobsCount || 0) === 0)) {
+        showToast(`Live scan found ${result.jobsDiscovered} jobs, but AI scoring was unavailable or quota-limited. Listings were saved without fabricated scores; check your Gemini key/quota and retry on the next schedule.`, 'info');
+      } else if (result.aiScoringConfigured === false) {
+        showToast(`Live scan found ${result.jobsDiscovered} jobs, but AI scoring is waiting for your Gemini API key.`, 'info');
+      } else {
+        showToast(`Live scan completed: ${result.jobsDiscovered} jobs discovered, ${result.highMatchJobsCount} high matches.`, 'success');
+      }
+    } catch (error: any) {
+      setSchedule((prev) => ({ ...prev, status: 'error' }));
+      showToast(error?.message || 'Live scan failed. Check backend status and job-source connectivity.', 'error');
+    }
   };
-
   const markNotificationAsRead = (id: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))

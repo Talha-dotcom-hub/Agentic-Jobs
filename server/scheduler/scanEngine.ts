@@ -1,17 +1,10 @@
 import { searchAllSources } from '../sources/sourceManager.js';
 import { sendPushNotificationToUser } from '../push/webPushService.js';
 import { getPersistedResume } from '../resume/resumeManager.js';
-import { GoogleGenAI, Type } from '@google/genai';
-
-// Initialize Gemini client for background matching
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+import { Type } from '@google/genai';
+import { createHash } from 'node:crypto';
+import { generateWithGeminiFallback } from '../ai/geminiFallback.js';
+import { getUserGeminiApiKey } from '../credentials/geminiCredentialVault.js';
 
 export interface UserScanConfig {
   userId: string;
@@ -68,6 +61,9 @@ export async function executeScheduledUserScan(
   newJobsFound: number;
   highMatchJobsCount: number;
   nextScanTime: string;
+  aiScoringConfigured?: boolean;
+  aiScoringExhausted?: boolean;
+  scoredJobsCount?: number;
   error?: string;
 }> {
   const startTime = Date.now();
@@ -106,16 +102,28 @@ export async function executeScheduledUserScan(
       }
     }
 
-    // Filter and match new jobs
-    if (resumeText && process.env.GEMINI_API_KEY) {
-      for (const job of discoveredJobs.slice(0, 3)) {
-        try {
-          const prompt = `Evaluate candidate match (0-100 score).
-JOB: ${job.title} at ${job.company}
-RESUME: ${resumeText.slice(0, 1000)}`;
+        // User key takes priority; the backend operator key is an optional service fallback.
+    let activeGeminiKey: string | null = process.env.GEMINI_API_KEY || null;
+    try {
+      const personalKey = await getUserGeminiApiKey(config.userId, supabaseClient);
+      if (personalKey) activeGeminiKey = personalKey;
+    } catch (credentialError: any) {
+      console.warn('Per-user Gemini credential lookup warning:', credentialError?.message || credentialError);
+    }
 
-          const aiRes = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
+    const matchByUrl = new Map<string, { score: number; matchingEvidence: string[]; potentialSkillGaps: string[]; eligibilityWarnings: string[] }>();
+    let quotaExhaustedForThisScan = false;
+    if (resumeText && activeGeminiKey) {
+      // Bounded AI calls prevent one scan from consuming an unbounded amount of quota.
+      for (const job of discoveredJobs.slice(0, 10)) {
+        const stableUrl = job.originalUrl || `${job.source}|${job.title}|${job.company}`;
+        try {
+          const prompt = `Estimate a 0-100 role-fit score from evidence only; this is not hiring probability. Never invent qualifications.
+JOB: ${job.title} at ${job.company}
+LOCATION: ${job.location}
+DESCRIPTION: ${(job.description || '').slice(0, 1800)}
+RESUME: ${resumeText.slice(0, 3000)}`;
+          const { response: aiRes } = await generateWithGeminiFallback(activeGeminiKey, {
             contents: prompt,
             config: {
               responseMimeType: 'application/json',
@@ -123,37 +131,90 @@ RESUME: ${resumeText.slice(0, 1000)}`;
                 type: Type.OBJECT,
                 properties: {
                   score: { type: Type.INTEGER },
+                  matchingEvidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  potentialSkillGaps: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  eligibilityWarnings: { type: Type.ARRAY, items: { type: Type.STRING } },
                 },
-                required: ['score'],
+                required: ['score', 'matchingEvidence', 'potentialSkillGaps', 'eligibilityWarnings'],
               },
             },
           });
-
           const parsed = JSON.parse(aiRes.text || '{}');
-          if (parsed.score >= 85) {
+          const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+          const evaluated = {
+            score,
+            matchingEvidence: Array.isArray(parsed.matchingEvidence) ? parsed.matchingEvidence : [],
+            potentialSkillGaps: Array.isArray(parsed.potentialSkillGaps) ? parsed.potentialSkillGaps : [],
+            eligibilityWarnings: Array.isArray(parsed.eligibilityWarnings) ? parsed.eligibilityWarnings : [],
+          };
+          matchByUrl.set(stableUrl, evaluated);
+          if (score >= 85) {
             highMatchesCount++;
-
-            // Dispatch Web Push Notification for High Match
-            await sendPushNotificationToUser(
-              config.userId,
-              {
-                title: `🎯 High Match Opportunity Found: ${parsed.score}%`,
-                message: `${job.title} at ${job.company} matches your resume competencies.`,
-                data: {
-                  category: 'match',
-                  jobId: job.id,
-                },
-              },
-              supabaseClient
-            );
+            await sendPushNotificationToUser(config.userId, {
+              title: `ðŸŽ¯ High Match Opportunity Found: ${score}%`,
+              message: `${job.title} at ${job.company} matches evidence in your resume.`,
+              data: { category: 'match', jobId: job.id, url: job.originalUrl },
+            }, supabaseClient);
           }
-        } catch (e) {
-          // Continue loop if single evaluation fails
+        } catch (error: any) {
+          if (error?.name === 'GeminiFallbackExhaustedError') {
+            quotaExhaustedForThisScan = true;
+            console.warn('Gemini fallback chain exhausted; discovery will continue and this user can retry on the next schedule.');
+            break;
+          }
+          console.warn(`AI match skipped for ${job.title}:`, error?.message || error);
         }
       }
     }
 
-    // Dispatch required push notification upon scan completion
+    // Store actual vacancies and scores durably. Null score means AI did not evaluate the listing;
+    // the recommendations API intentionally does not present these as scored matches.
+    let newlyFoundCount = discoveredJobs.length;
+    if (supabaseClient && discoveredJobs.length > 0) {
+      const nowIso = new Date().toISOString();
+      const records = discoveredJobs.map((job) => {
+        const stableUrl = job.originalUrl || `${job.source}|${job.title}|${job.company}`;
+        const evaluated = matchByUrl.get(stableUrl);
+        return {
+          user_id: config.userId,
+          job_key: createHash('sha256').update(stableUrl).digest('hex'),
+          source: job.source,
+          title: job.title,
+          company: job.company,
+          company_logo: job.companyLogo || null,
+          location: job.location || 'Unspecified',
+          workplace_type: job.workplaceType || null,
+          employment_type: job.type || null,
+          experience_level: job.experienceLevel || null,
+          salary: job.salary || null,
+          original_url: job.originalUrl || null,
+          description: job.description || '',
+          skills_required: Array.isArray(job.skillsRequired) ? job.skillsRequired : [],
+          posted_date: job.postedDate || null,
+          verified: Boolean(job.verified),
+          is_stale: Boolean(job.isStale),
+          match_score: evaluated?.score ?? null,
+          matching_evidence: evaluated?.matchingEvidence || [],
+          potential_skill_gaps: evaluated?.potentialSkillGaps || [],
+          eligibility_warnings: evaluated?.eligibilityWarnings || [],
+          last_seen_at: nowIso,
+          updated_at: nowIso,
+        };
+      });
+      const keys = records.map((record) => record.job_key);
+      const { data: existingRows, error: existingError } = await supabaseClient
+        .from('user_discovered_jobs').select('job_key').eq('user_id', config.userId).in('job_key', keys);
+      if (!existingError) {
+        const existingKeys = new Set((existingRows || []).map((row: any) => row.job_key));
+        newlyFoundCount = records.filter((record) => !existingKeys.has(record.job_key)).length;
+      }
+      const { error: persistError } = await supabaseClient
+        .from('user_discovered_jobs').upsert(records, { onConflict: 'user_id,job_key' });
+      if (persistError) throw new Error(`Could not persist discovered jobs: ${persistError.message}`);
+    }
+    if (quotaExhaustedForThisScan) {
+      console.warn(`AI scoring paused for user ${config.userId} after fallback exhaustion; job discovery results were retained without fabricated scores.`);
+    }// Dispatch required push notification upon scan completion
     try {
       await sendPushNotificationToUser(
         config.userId,
@@ -185,7 +246,7 @@ RESUME: ${resumeText.slice(0, 1000)}`;
       durationMs: Date.now() - startTime,
       status: 'completed',
       jobsDiscovered: discoveredJobs.length,
-      newJobsFound: Math.min(discoveredJobs.length, 3),
+      newJobsFound: newlyFoundCount,
       highMatchJobsCount: highMatchesCount,
       sourcesSummary: searchResult.sourceStatuses.map((s) => `${s.displayName}: ${s.jobs.length}`).join(' · '),
     };
@@ -215,9 +276,12 @@ RESUME: ${resumeText.slice(0, 1000)}`;
     return {
       success: true,
       jobsDiscovered: discoveredJobs.length,
-      newJobsFound: Math.min(discoveredJobs.length, 3),
+      newJobsFound: newlyFoundCount,
       highMatchJobsCount: highMatchesCount,
       nextScanTime: nextRun,
+      aiScoringConfigured: Boolean(activeGeminiKey),
+      aiScoringExhausted: quotaExhaustedForThisScan,
+      scoredJobsCount: matchByUrl.size,
     };
   } catch (err: any) {
     return {
