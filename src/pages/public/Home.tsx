@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { DeveloperCard } from '../../components/common/DeveloperCard';
 import { TiltCard } from '../../components/common/TiltCard';
 import { motion } from 'framer-motion';
@@ -19,7 +20,46 @@ import {
 
 
 export const Home: React.FC = () => {
-  const { setActiveView, enterDemoMode } = useApp();
+  const { setActiveView, enterDemoMode, user, isDemoMode, setUser } = useApp();
+
+  const handleGetStarted = async () => {
+    if (user.isAuthenticated || isDemoMode) {
+      setActiveView('resume');
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (!error && data.session?.user) {
+          const sessionUser = data.session.user;
+
+          setUser((prev) => ({
+            ...prev,
+            id: sessionUser.id,
+            email: sessionUser.email || '',
+            name:
+              sessionUser.user_metadata?.full_name ||
+              sessionUser.email?.split('@')[0] ||
+              'User',
+            isAuthenticated: true,
+          }));
+
+          setActiveView('resume');
+          return;
+        }
+
+        if (error) {
+          console.error('Supabase session check failed:', error);
+        }
+      } catch (error) {
+        console.error('Could not retrieve Supabase session:', error);
+      }
+    }
+
+    setActiveView('signup');
+  };
 
   return (
     <div className="space-y-24 pb-20">
@@ -58,7 +98,7 @@ export const Home: React.FC = () => {
           className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2"
         >
           <button
-            onClick={() => setActiveView('signup')}
+            onClick={() => { void handleGetStarted(); }}
             className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-semibold shadow-lg shadow-violet-600/20 transition-all text-sm flex items-center justify-center gap-2"
           >
             <span>Get Started</span>
