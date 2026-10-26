@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { SourceConnector, SourceSearchParams, NormalizedSourceResult, NormalizedJob } from './types.js';
 
 export const apifyConnector: SourceConnector = {
@@ -77,27 +78,28 @@ export const apifyConnector: SourceConnector = {
         for (const item of items) {
           if (!item.title && !item.jobTitle) continue;
 
-          const title = item.title || item.jobTitle || 'Software Engineer';
-          const company = item.companyName || item.company || 'Tech Employer';
-          const jobUrl = item.jobUrl || item.url || item.link || 'https://linkedin.com/jobs';
-          const loc = item.location || location;
+          const title = item.title || item.jobTitle;
+          const company = item.companyName || item.company;
+          const jobUrl = item.jobUrl || item.url || item.link;
+          const loc = item.location || 'Not specified';
+          if (typeof title !== 'string' || !title.trim() || typeof company !== 'string' || !company.trim() || typeof jobUrl !== 'string' || !jobUrl.startsWith('https://')) continue;
 
           normalizedJobs.push({
-            id: `apify-${item.id || item.jobId || Math.random().toString(36).substring(7)}`,
+            id: `apify-${createHash('sha256').update(`${jobUrl}|${title}|${company}`).digest('hex').slice(0, 24)}`,
             source: 'Apify LinkedIn Actor',
             title,
             company,
             location: loc,
-            workplaceType: loc.toLowerCase().includes('remote') ? 'Remote' : 'Hybrid',
-            type: 'Full-time',
-            experienceLevel: 'Mid-Senior',
+            workplaceType: /remote/i.test(loc) ? 'Remote' : /hybrid/i.test(loc) ? 'Hybrid' : 'Not specified',
+            type: item.jobType === 'Full-time' || item.jobType === 'Contract' || item.jobType === 'Part-time' || item.jobType === 'Internship' ? item.jobType : 'Not specified',
+            experienceLevel: ['Internship','Entry-Level','Mid-Senior','Director','Executive'].includes(item.experienceLevel) ? item.experienceLevel : 'Not specified',
             salary: item.salary || undefined,
             originalUrl: jobUrl,
-            description: item.descriptionText || item.description || `Job posting for ${title} at ${company}.`,
-            skillsRequired: ['TypeScript', 'React', 'Node.js'],
-            postedDate: item.postedAt || item.publishedAt || new Date().toISOString(),
+            description: typeof item.descriptionText === 'string' ? item.descriptionText.slice(0, 5000) : typeof item.description === 'string' ? item.description.slice(0, 5000) : '',
+            skillsRequired: Array.isArray(item.skillsRequired) ? item.skillsRequired.filter((v: unknown) => typeof v === 'string').slice(0, 20) : Array.isArray(item.skills) ? item.skills.filter((v: unknown) => typeof v === 'string').slice(0, 20) : [],
+            postedDate: typeof item.postedAt === 'string' ? item.postedAt : typeof item.publishedAt === 'string' ? item.publishedAt : '',
             firstSeen: new Date().toISOString(),
-            verified: true,
+            verified: item.verified === true,
           });
         }
       }

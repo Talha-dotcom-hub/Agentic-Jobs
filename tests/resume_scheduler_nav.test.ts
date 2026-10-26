@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractDeterministicProfile } from '../server/resume/resumeManager';
+import { deriveResumeSearchKeywords, extractDeterministicProfile } from '../server/resume/resumeManager';
 import { calculateNextScanTime, executeScheduledUserScan } from '../server/scheduler/scanEngine';
 
 describe('Resume Memory, Scheduler Constraints & Push Notification Suite', () => {
@@ -9,7 +9,7 @@ describe('Resume Memory, Scheduler Constraints & Push Notification Suite', () =>
       Senior Full Stack Software Engineer with 6+ years of experience.
       Core Skills: TypeScript, React, Node.js, Python, PostgreSQL, Docker, AWS.
       Certifications: AWS Certified Solutions Architect.
-      Education: Bachelor of Science in Computer Science.
+      Education: Bachelor of Science in Computer Science at Example University.
     `;
 
     const profile = extractDeterministicProfile(sampleResume, 'Candidate_Resume.pdf');
@@ -58,22 +58,28 @@ describe('Resume Memory, Scheduler Constraints & Push Notification Suite', () =>
     assert.strictEqual(clampedMaxDaily.toISOString(), '2026-10-30T10:00:00.000Z');
   });
 
-  test('Scheduled user scan executes and dispatches exact completion notification', async () => {
-    const config = {
-      userId: 'test-user-scan-notification',
+  test('Resume-derived search keywords reflect evidence from the uploaded resume', () => {
+    const keywords = deriveResumeSearchKeywords('Data Analyst\nSkills: Python, SQL, Power BI, Excel.');
+    assert.match(keywords, /Data Analyst|Python|SQL|Power BI/i);
+    assert.doesNotMatch(keywords, /Software Developer Engineer/);
+  });
+
+  test('Scheduled scan fails honestly when no saved resume exists and schedules a future retry', async () => {
+    const now = Date.now();
+    const result = await executeScheduledUserScan({
+      userId: 'test-user-without-resume',
       enabled: true,
-      frequencyType: 'hourly' as const,
+      frequencyType: 'hourly',
       frequencyValue: 4,
       timezone: 'UTC',
-      lastScanTime: new Date(Date.now() - 3600000 * 4).toISOString(),
-      nextScanTime: new Date().toISOString(),
-      resumeText: 'Full Stack Engineer with TypeScript and React experience',
-    };
+      lastScanTime: new Date(now - 4 * 3600000).toISOString(),
+      nextScanTime: new Date(now).toISOString(),
+      resumeText: '',
+      scanKind: 'scheduled',
+    });
 
-    const result = await executeScheduledUserScan(config);
-
-    assert.strictEqual(result.success, true, 'Scan completed successfully');
-    assert.ok(result.jobsDiscovered >= 0, 'Jobs count is non-negative');
-    assert.ok(result.nextScanTime, 'Next scan time is calculated');
+    assert.strictEqual(result.success, false, 'A scan without a real resume must not report success');
+    assert.match(result.error || '', /No saved resume/i);
+    assert.ok(Date.parse(result.nextScanTime) > now, 'Failure must not immediately retry on the same past schedule time');
   });
 });

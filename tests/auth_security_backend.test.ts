@@ -159,9 +159,20 @@ describe('Auth & Backend Security Suite', () => {
   });
 
   describe('ATS Connector Architecture', () => {
-    test('ATS Connector instantiates with secure defaults', () => {
-      assert.strictEqual(atsConnector.sourceId, 'employer-ats');
-      assert.strictEqual(atsConnector.isConfigured(), true);
+    test('ATS connector reports unconfigured when no employer boards are configured', () => {
+      const oldGreenhouse = process.env.ATS_GREENHOUSE_BOARDS;
+      const oldLever = process.env.ATS_LEVER_COMPANIES;
+      delete process.env.ATS_GREENHOUSE_BOARDS;
+      delete process.env.ATS_LEVER_COMPANIES;
+      try {
+        assert.strictEqual(atsConnector.sourceId, 'employer-ats');
+        assert.strictEqual(atsConnector.isConfigured(), false);
+      } finally {
+        if (oldGreenhouse === undefined) delete process.env.ATS_GREENHOUSE_BOARDS;
+        else process.env.ATS_GREENHOUSE_BOARDS = oldGreenhouse;
+        if (oldLever === undefined) delete process.env.ATS_LEVER_COMPANIES;
+        else process.env.ATS_LEVER_COMPANIES = oldLever;
+      }
     });
   });
 });

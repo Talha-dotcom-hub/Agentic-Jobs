@@ -15,13 +15,19 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
   const isSaved = savedJobIds.includes(job.id);
   const isAlreadyApplied = applications.some((app) => app.jobId === job.id || app.jobTitle === job.title);
 
-  const handleCopyLink = (e: React.MouseEvent) => {
+  const handleCopyLink = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(job.originalUrl);
-    showToast('Original job link copied to clipboard!', 'success');
+    if (!job.originalUrl) { showToast('No original job URL is available for this listing.', 'info'); return; }
+    try {
+      await navigator.clipboard.writeText(job.originalUrl);
+      showToast('Original job link copied to clipboard!', 'success');
+    } catch {
+      showToast('Clipboard access was unavailable. Open the job to copy its URL.', 'error');
+    }
   };
 
-  const getScoreColor = (score: number) => {
+  const getScoreColor = (score: number | null) => {
+    if (score === null || !Number.isFinite(score)) return 'text-slate-300 bg-slate-500/10 border-slate-500/30';
     if (score >= 90) return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30';
     if (score >= 85) return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
     if (score >= 75) return 'text-violet-300 bg-violet-500/10 border-violet-500/30';
@@ -46,13 +52,11 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
             {/* Match score badge */}
             <button
               onClick={() => onSelectJob(job)}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-transform hover:scale-105 ${getScoreColor(
-                job.matchScore
-              )}`}
-              title="Click to view Gemini AI match breakdown"
+              className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-transform hover:scale-105 ${getScoreColor(job.matchScore)}`}
+              title={job.matchScore === null ? 'No match evaluation exists yet' : 'Click to view the actual AI match evaluation'}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{job.matchScore}% Match</span>
+              <span>{job.matchScore === null ? 'Not scored' : `${job.matchScore}% Match`}</span>
             </button>
           </div>
 
@@ -79,7 +83,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
           {/* Required Skills Inline List */}
           <div className="text-xs text-slate-400 leading-normal line-clamp-2">
             <strong className="text-slate-300 font-medium">Key Requirements: </strong>
-            {job.skillsRequired.join(' · ')}
+            {job.skillsRequired.length ? job.skillsRequired.join(' · ') : 'Requirements not provided by source'}
           </div>
         </div>
 
@@ -133,6 +137,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
             )}
 
             {/* External original job post link */}
+            {job.originalUrl && (
             <a
               href={job.originalUrl}
               target="_blank"
@@ -142,6 +147,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
               <span>Apply</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
+            )}
           </div>
         </div>
       </div>

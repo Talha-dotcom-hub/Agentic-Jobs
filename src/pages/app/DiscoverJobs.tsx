@@ -36,7 +36,7 @@ export const DiscoverJobs: React.FC = () => {
       return matchSearch && matchWorkplace && matchLevel;
     })
     .sort((a, b) => {
-      if (sortBy === 'match') return b.matchScore - a.matchScore;
+      if (sortBy === 'match') return (b.matchScore ?? -1) - (a.matchScore ?? -1);
       if (sortBy === 'date') return new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime();
       return a.title.localeCompare(b.title);
     });
@@ -48,7 +48,7 @@ export const DiscoverJobs: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-white">Discover Opportunities</h1>
           <p className="text-xs text-slate-400">
-            Indexed across Apify LinkedIn Actors, RapidAPI, public feeds, and employer ATS boards.
+            Discover vacancies from configured public feeds and supported employer job boards. Optional third-party integrations may require operator configuration.
           </p>
         </div>
 

@@ -21,6 +21,42 @@ import { TiltCard } from '../../components/common/TiltCard';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { getGeminiKeyStatus, saveGeminiApiKey } from '../../services/api';
 
+async function extractResumeText(file: File): Promise<string> {
+  const maxBytes = 5 * 1024 * 1024;
+  if (file.size === 0) throw new Error('The selected file is empty.');
+  if (file.size > maxBytes) throw new Error('Resume file exceeds the 5 MB upload limit.');
+  const fileName = file.name.toLowerCase();
+  if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+    const text = await file.text();
+    if (!text.trim()) throw new Error('No readable text was found in this file.');
+    return text;
+  }
+  if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
+    const pdfjs = await import('pdfjs-dist');
+    const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+    pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+    const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+    const pages: string[] = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((item: any) => typeof item.str === 'string' ? item.str : '').filter(Boolean).join(' ');
+      if (pageText.trim()) pages.push(pageText.trim());
+    }
+    const text = pages.join('\n\n');
+    if (text.trim().length < 20) throw new Error('No selectable text was found in this PDF. It may be scanned/image-only; OCR is not currently supported. Upload a text-based PDF or paste the resume text.');
+    return text;
+  }
+  if (fileName.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    const mammoth = await import('mammoth/mammoth.browser');
+    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+    const text = String(result.value || '').trim();
+    if (text.length < 20) throw new Error('No readable text was found in this DOCX file.');
+    return text;
+  }
+  throw new Error('Unsupported file type. Upload PDF, DOCX, TXT, or Markdown.');
+}
+
 export const MyResume: React.FC = () => {
   const { resume, updateResume, reprocessResumeProfile, deleteResumeProfile, showToast } = useApp();
   const [resumeText, setResumeText] = useState(resume.text);
@@ -66,42 +102,50 @@ export const MyResume: React.FC = () => {
     setResumeName(resume.name);
   }, [resume.text, resume.name]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-
-    setResumeName(file.name);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const content = event.target?.result as string;
+    setSaving(true);
+    try {
+      const content = await extractResumeText(file);
+      setResumeName(file.name);
       setResumeText(content);
-      showToast(`Extracted file content from ${file.name}. Saving & extracting...`, 'info');
-      setSaving(true);
+      showToast(`Text extracted from ${file.name}. Saving your resume...`, 'info');
       await updateResume(content, file.name, file);
-      setSaving(false);
       await promptForGeminiIfMissing();
-    };
-    reader.readAsText(file);
+    } catch (error: any) {
+      showToast(error?.message || 'Could not read or save this resume file.', 'error');
+    } finally {
+      setSaving(false);
+      input.value = '';
+    }
   };
 
   const handleSave = async () => {
     setSaving(true);
-    await updateResume(resumeText, resumeName);
-    setSaving(false);
-    if (resumeText.trim()) await promptForGeminiIfMissing();
+    try {
+      await updateResume(resumeText, resumeName);
+      if (resumeText.trim()) await promptForGeminiIfMissing();
+    } catch (error: any) {
+      showToast(error?.message || 'Could not save the resume. Your previous saved profile was kept.', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReprocess = async () => {
     setReprocessing(true);
-    await reprocessResumeProfile();
-    setReprocessing(false);
+    try {
+      await reprocessResumeProfile();
+    } finally {
+      setReprocessing(false);
+    }
   };
 
   const handleDelete = async () => {
     setIsDeleteModalOpen(false);
     await deleteResumeProfile();
-    setResumeText('');
-    setResumeName('No Resume Stored');
   };
 
   const profile = resume.profile;
@@ -160,7 +204,7 @@ export const MyResume: React.FC = () => {
           <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
           <div>
             <strong className="text-white font-semibold">Dual Persistent Memory: </strong>
-            Securely synchronized to Row Level Security storage with local durable JSON backup.
+            Saved in your authenticated account. Production does not use a local plaintext resume fallback.
           </div>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
@@ -209,12 +253,12 @@ export const MyResume: React.FC = () => {
                   Target Candidate Profile
                 </span>
                 <h2 className="text-xl font-bold text-white mt-0.5">
-                  {profile?.headline || resume.parsedRole || 'Full Stack Software Engineer'}
+                  {profile?.headline || resume.parsedRole || (resume.text.trim() ? 'Role not explicitly identified' : 'Upload a resume to build your profile')}
                 </h2>
               </div>
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full bg-violet-600/20 border border-violet-500/40 text-violet-300 text-xs font-semibold">
-                  {profile?.yearsOfExperienceTotal ? `${profile.yearsOfExperienceTotal}+ Years Experience` : 'Demonstrated Experience'}
+                  {typeof profile?.yearsOfExperienceTotal === 'number' ? `${profile.yearsOfExperienceTotal}+ Years Experience (from resume)` : 'Experience duration not specified'}
                 </span>
               </div>
             </div>
@@ -313,9 +357,7 @@ export const MyResume: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-slate-400 italic">
-                Experience details extracted from resume text will appear here.
-              </p>
+              <p className="text-xs text-slate-400 italic">No explicit work-history entries were identified in the saved resume.</p>
             )}
           </div>
 

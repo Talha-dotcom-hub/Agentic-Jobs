@@ -42,7 +42,7 @@ export function createAuthMiddleware(supabaseClient: any) {
     }
 
     // 2. Allow test tokens in isolated test runner environment
-    if (token === 'demo-test-token' || token.startsWith('test-token')) {
+    if (process.env.NODE_ENV !== 'production' && (token === 'demo-test-token' || token.startsWith('test-token'))) {
       req.user = { id: 'test-user-id', email: 'test@example.com' };
       return next();
     }
@@ -74,7 +74,7 @@ export function createOptionalAuthMiddleware(supabaseClient: any) {
       } catch {
         // Continue unauthenticated on error
       }
-    } else if (token.startsWith('test-token')) {
+    } else if (process.env.NODE_ENV !== 'production' && token.startsWith('test-token')) {
       req.user = { id: 'test-user-id', email: 'test@example.com' };
     }
 

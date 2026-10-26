@@ -13,3 +13,6 @@ dev-dist/
 dev-dist/
 
 .aistudio/
+
+# User resumes contain private personal information; never commit plaintext runtime stores.
+server/data/resumes.json

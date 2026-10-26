@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getGeminiKeyStatus, saveGeminiApiKey, deleteGeminiApiKey } from '../../services/api';
+import { getGeminiKeyStatus, saveGeminiApiKey, deleteGeminiApiKey, deleteAccountApi } from '../../services/api';
 import type { GeminiKeyStatus } from '../../services/api';
 import {
   Settings as SettingsIcon,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const Settings: React.FC = () => {
-  const { user, setUser, showToast, logoutUser } = useApp();
+  const { user, setUser, showToast, logoutUser, jobs, savedJobIds, applications, notifications, schedule, resume, isDemoMode } = useApp();
 
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
@@ -23,6 +23,7 @@ export const Settings: React.FC = () => {
   const [geminiKeyBusy, setGeminiKeyBusy] = useState(false);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [accountDeleteBusy, setAccountDeleteBusy] = useState(false);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,19 +71,41 @@ export const Settings: React.FC = () => {
     }
   };
   const handleDownloadData = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(user, null, 2));
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      mode: isDemoMode ? 'demo-sample-data' : 'account-data',
+      user: { id: user.id, email: user.email, name: user.name, joinedDate: user.joinedDate, preferences: user.preferences },
+      resume: { name: resume.name, text: resume.text, lastUpdated: resume.lastUpdated, profile: resume.profile, extractedSkills: resume.extractedSkills, parsedRole: resume.parsedRole },
+      discoveredAndSavedJobs: jobs.filter((job) => savedJobIds.includes(job.id)),
+      applications,
+      notifications,
+      schedule,
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', 'agentic_jobs_user_data.json');
+    downloadAnchor.href = objectUrl;
+    downloadAnchor.download = 'agentic_jobs_account_export.json';
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    showToast('Account data exported as JSON file.', 'success');
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    showToast('Current account data export downloaded.', 'success');
   };
 
-  const handleDeleteAccount = () => {
-    showToast('Account and all associated resume data deleted.', 'info');
-    logoutUser();
+  const handleDeleteAccount = async () => {
+    if (accountDeleteBusy) return;
+    setAccountDeleteBusy(true);
+    try {
+      await deleteAccountApi();
+      setDeleteConfirmOpen(false);
+      showToast('Account deletion was confirmed by the backend.', 'success');
+      await logoutUser();
+    } catch (error: any) {
+      showToast(error?.message || 'Account deletion failed. Your session has not been intentionally cleared.', 'error');
+    } finally {
+      setAccountDeleteBusy(false);
+    }
   };
 
   return (
@@ -132,7 +155,7 @@ export const Settings: React.FC = () => {
         <div className="space-y-4 pt-4 border-t border-slate-800">
           <h3 className="font-bold text-white flex items-center gap-2 text-sm">
             <Key className="w-4 h-4 text-violet-400" />
-            <span>Primary AI Integration â€” Google Gemini</span>
+            <span>Primary AI Integration — Google Gemini</span>
           </h3>
           <p className="text-slate-400 text-[11px] leading-relaxed">
             Your key is encrypted by the backend and never returned to this page. It is used for resume extraction, matching, and scheduled AI scoring. The app never stores the raw key in browser storage.
@@ -144,7 +167,7 @@ export const Settings: React.FC = () => {
               autoComplete="new-password"
               value={geminiKey}
               onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder={geminiKeyStatus?.configured ? `Saved key ${geminiKeyStatus.keyHint || 'â€¢â€¢â€¢â€¢'}. Paste a new key to rotate.` : 'Paste your Gemini API key'}
+              placeholder={geminiKeyStatus?.configured ? `Saved key ${geminiKeyStatus.keyHint || '••••'}. Paste a new key to rotate.` : 'Paste your Gemini API key'}
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500 font-mono"
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -174,7 +197,7 @@ export const Settings: React.FC = () => {
                 {geminiKeyStatus?.configured ? 'Key Saved' : 'Key Needed'}
               </span>
             </div>
-            <div className="text-[11px] text-slate-300 font-mono leading-relaxed">Gemini 3.8 Flash â†’ 3.6 Flash â†’ 3.5 Flash-Lite â†’ 3.1 Flash-Lite â†’ 2.5 Flash*</div>
+            <div className="text-[11px] text-slate-300 font-mono leading-relaxed">Gemini 3.8 Flash → 3.6 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite → 2.5 Flash*</div>
             <p className="text-[11px] text-slate-500">*Fallback uses the same API key; it can help with model-specific limits, but cannot bypass a project-wide quota or invalid key. Legacy model access depends on your Google AI project.</p>
             <p className="text-[11px] text-slate-500">When every eligible model is rate-limited, the scan retains discovered listings and retries AI scoring at a later scheduled run instead of generating fake scores.</p>
           </div>
@@ -240,10 +263,12 @@ export const Settings: React.FC = () => {
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleDeleteAccount}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white"
+                disabled={accountDeleteBusy}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white disabled:opacity-50"
               >
-                Permanently Delete
+                {accountDeleteBusy ? 'Deleting...' : 'Permanently Delete'}
               </button>
             </div>
           </div>

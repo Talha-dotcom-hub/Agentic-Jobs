@@ -6,11 +6,11 @@ export interface Job {
   location: string;
   source: 'Apify LinkedIn Actor' | 'RapidAPI LinkedIn' | 'Greenhouse ATS' | 'Lever ATS' | 'Public Jobs Feed' | 'User Custom Entry';
   postedDate: string;
-  matchScore: number;
+  matchScore: number | null;
   salary?: string;
-  type: 'Full-time' | 'Contract' | 'Part-time' | 'Internship';
-  experienceLevel: 'Internship' | 'Entry-Level' | 'Mid-Senior' | 'Director' | 'Executive';
-  workplaceType: 'Remote' | 'Hybrid' | 'On-site';
+  type: 'Full-time' | 'Contract' | 'Part-time' | 'Internship' | 'Not specified';
+  experienceLevel: 'Internship' | 'Entry-Level' | 'Mid-Senior' | 'Director' | 'Executive' | 'Not specified';
+  workplaceType: 'Remote' | 'Hybrid' | 'On-site' | 'Not specified';
   originalUrl: string;
   description: string;
   skillsRequired: string[];
@@ -102,7 +102,7 @@ export interface SourceHealth {
   id: string;
   name: string;
   type: 'Apify LinkedIn Actor' | 'RapidAPI LinkedIn' | 'Public RSS/ATS' | 'Direct Employer ATS';
-  status: 'Connected' | 'Credentials Required' | 'Error' | 'Quota Exceeded';
+  status: 'Connected' | 'Available' | 'Configured (not health-tested)' | 'Credentials Required' | 'Error' | 'Quota Exceeded';
   lastCheckTime: string;
   jobsIndexedCount: number;
   allowedRefreshInterval: string;

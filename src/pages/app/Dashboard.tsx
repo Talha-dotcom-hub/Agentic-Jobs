@@ -33,7 +33,7 @@ export const Dashboard: React.FC = () => {
 
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
-  const recommendedJobs = jobs.filter((j) => j.matchScore >= 85);
+  const recommendedJobs = jobs.filter((j) => j.matchScore !== null && j.matchScore >= 85);
   const appliedApps = applications.filter((a) => a.status === 'Applied');
   const interviewApps = applications.filter((a) => a.status === 'Interview');
   const offerApps = applications.filter((a) => a.status === 'Offer');
@@ -120,7 +120,7 @@ export const Dashboard: React.FC = () => {
               <Compass className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform shrink-0" />
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-white tabular-nums">{jobs.length}</div>
-            <div className="text-[10px] text-slate-500 truncate">4 sources connected</div>
+            <div className="text-[10px] text-slate-500 truncate">Source status depends on backend checks</div>
           </div>
         </TiltCard>
 
@@ -258,7 +258,7 @@ export const Dashboard: React.FC = () => {
 
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="px-2 sm:px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold text-[11px] sm:text-xs">
-                        {job.matchScore}% Match
+                        {job.matchScore === null ? 'Not scored' : `${job.matchScore}% Match`}
                       </span>
                       <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-violet-300 transition-colors hidden xs:block" />
                     </div>

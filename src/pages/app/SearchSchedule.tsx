@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Clock, RefreshCw, CheckCircle2, ShieldCheck, Power } from 'lucide-react';
 
@@ -8,6 +8,12 @@ export const SearchSchedule: React.FC = () => {
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [frequencyType, setFrequencyType] = useState<'hourly' | 'daily'>(schedule.frequencyType);
   const [frequencyValue, setFrequencyValue] = useState(schedule.frequencyValue);
+
+  useEffect(() => {
+    setEnabled(schedule.enabled);
+    setFrequencyType(schedule.frequencyType);
+    setFrequencyValue(schedule.frequencyValue);
+  }, [schedule.enabled, schedule.frequencyType, schedule.frequencyValue]);
 
   const handleSaveSchedule = async () => {
     await updateSchedule({
@@ -134,15 +140,27 @@ export const SearchSchedule: React.FC = () => {
           </div>
         </div>
 
-        {/* Schedule Status Stats */}
+        {/* Schedule status is always derived from the saved account schedule, never hard-coded. */}
         <div className="p-3.5 sm:p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2 text-[11px]">
-          <div className="flex justify-between text-slate-300">
+          <div className="flex flex-wrap justify-between gap-2 text-slate-300">
             <span>Last Scan Status:</span>
-            <span className="font-semibold text-emerald-400">Completed (14 jobs indexed)</span>
+            <span className={`font-semibold ${schedule.status === 'completed' ? 'text-emerald-400' : schedule.status === 'error' ? 'text-rose-300' : 'text-slate-200'}`}>
+              {schedule.status === 'completed' ? 'Completed' : schedule.status === 'running' ? 'Running' : schedule.status === 'error' ? 'Needs retry' : 'Not run yet'}
+            </span>
           </div>
-          <div className="flex justify-between text-slate-300">
-            <span>Source Failures:</span>
-            <span className="font-semibold text-slate-200">0 failures detected</span>
+          <div className="flex flex-wrap justify-between gap-2 text-slate-300">
+            <span>Last successful scan jobs:</span>
+            <span className="font-semibold text-slate-200">{schedule.lastSuccessfulScanJobsCount || 0}</span>
+          </div>
+          <div className="flex flex-wrap justify-between gap-2 text-slate-300">
+            <span>Recorded source failures:</span>
+            <span className="font-semibold text-slate-200">{schedule.sourceFailuresCount || 0}</span>
+          </div>
+          <div className="text-slate-500">
+            {schedule.lastScanTime ? `Last scan attempt: ${new Date(schedule.lastScanTime).toLocaleString()}` : 'No scan attempt has been recorded for this account yet.'}
+          </div>
+          <div className="text-slate-500">
+            {schedule.nextScanTime ? `Next scheduled scan: ${new Date(schedule.nextScanTime).toLocaleString()}` : 'No next scan is scheduled.'}
           </div>
         </div>
 

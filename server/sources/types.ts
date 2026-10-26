@@ -14,9 +14,9 @@ export interface NormalizedJob {
   company: string;
   companyLogo?: string;
   location: string;
-  workplaceType: 'Remote' | 'Hybrid' | 'On-site';
-  type: 'Full-time' | 'Contract' | 'Part-time' | 'Internship';
-  experienceLevel: 'Internship' | 'Entry-Level' | 'Mid-Senior' | 'Director' | 'Executive';
+  workplaceType?: 'Remote' | 'Hybrid' | 'On-site' | 'Not specified';
+  type?: 'Full-time' | 'Contract' | 'Part-time' | 'Internship' | 'Not specified';
+  experienceLevel?: 'Internship' | 'Entry-Level' | 'Mid-Senior' | 'Director' | 'Executive' | 'Not specified';
   salary?: string;
   originalUrl: string;
   description: string;

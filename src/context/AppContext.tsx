@@ -20,7 +20,15 @@ import {
   extractResumeProfileApi,
   deleteResumeApi,
   deleteAccountApi,
-  fetchRecommendedJobsApi,
+  fetchDiscoveredJobsApi,
+  fetchSavedJobsApi,
+  saveJobApi,
+  removeSavedJobApi,
+  addCustomJobApi,
+  markNotificationReadApi,
+  clearNotificationsApi,
+  fetchScanSchedule,
+  fetchSourcesApi,
 } from '../services/api';
 import { supabase, isSupabaseConfigured, uploadResumeFile } from '../lib/supabase';
 import { subscribeUserToWebPush } from '../lib/pushClient';
@@ -72,7 +80,7 @@ interface AppContextType {
   jobs: Job[];
   savedJobIds: string[];
   toggleSaveJob: (jobId: string) => void;
-  addCustomJob: (job: Partial<Job>) => void;
+  addCustomJob: (job: Partial<Job>) => Promise<boolean>;
   evaluateJobMatch: (jobId: string) => Promise<MatchResult | null>;
 
   applications: Application[];
@@ -95,8 +103,8 @@ interface AppContextType {
 
   sources: SourceHealth[];
   notifications: AppNotification[];
-  markNotificationAsRead: (id: string) => void;
-  clearAllNotifications: () => void;
+  markNotificationAsRead: (id: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
 
   pushPermission: NotificationPermission | 'unsupported';
   requestPushPermission: () => Promise<void>;
@@ -106,7 +114,7 @@ interface AppContextType {
   removeToast: (id: string) => void;
 }
 
-const defaultResumeText = `Senior Full Stack Software Engineer with 6+ years of experience building scalable web applications.
+const demoResumeText = `Senior Full Stack Software Engineer with 6+ years of experience building scalable web applications.
 Core Skills: React, TypeScript, Node.js, Express, Python, GraphQL, PostgreSQL, Tailwind CSS, Docker, AWS, REST APIs, Git, CI/CD pipelines, System Architecture.
 Experience: Led frontend architecture for cloud platforms, implemented microservices with Express and Python, optimized database queries, built real-time WebSocket dashboards.
 Education: B.S. in Computer Science.`;
@@ -158,24 +166,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
-  const [sources] = useState<SourceHealth[]>(initialSources);
+  const [sources, setSources] = useState<SourceHealth[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  const [resume, setResume] = useState<Resume>({
-    text: defaultResumeText,
-    name: 'Resume_Engineering_2026.pdf',
-    lastUpdated: new Date().toISOString(),
-    extractedSkills: ['TypeScript', 'React', 'Node.js', 'Express', 'Python', 'PostgreSQL', 'Tailwind CSS', 'Docker', 'AWS', 'System Architecture'],
-    parsedRole: 'Senior Full Stack Software Engineer',
-  });
+  const emptyResume: Resume = {
+    text: '', name: 'No Resume Stored', lastUpdated: '', extractedSkills: [], parsedRole: '',
+    profile: undefined, extractionStatus: 'idle', profileVersion: 0,
+  };
+  const [resume, setResume] = useState<Resume>(emptyResume);
 
   const [schedule, setSchedule] = useState<ScanSchedule>({
-    enabled: true,
+    enabled: false,
     frequencyType: 'hourly',
     frequencyValue: 4,
-    lastScanTime: new Date(Date.now() - 3600000 * 2).toISOString(),
-    nextScanTime: new Date(Date.now() + 3600000 * 2).toISOString(),
-    lastSuccessfulScanJobsCount: 14,
+    lastScanTime: '',
+    nextScanTime: '',
+    lastSuccessfulScanJobsCount: 0,
     sourceFailuresCount: 0,
     status: 'idle',
   });
@@ -279,19 +285,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Restore Persistent Resume Memory from Server/Supabase
   useEffect(() => {
+    let cancelled = false;
     const loadResume = async () => {
+      if (isDemoMode) return;
+      if (!user.isAuthenticated || !user.id) {
+        setResume(emptyResume);
+        return;
+      }
       try {
-        const targetUserId = user.id || (isDemoMode ? 'user-001' : undefined);
-        const stored = await fetchResumeApi(targetUserId);
-        if (stored && stored.text) {
-          setResume(stored);
-        }
+        const stored = await fetchResumeApi();
+        if (cancelled) return;
+        setResume(stored?.text ? stored : emptyResume);
       } catch (err) {
-        console.warn('Initial resume sync error:', err);
+        console.warn('Initial resume sync failed:', err);
+        if (!cancelled) showToast('Could not load your saved resume. Check your connection and retry.', 'error');
       }
     };
-    loadResume();
-  }, [user.id, isDemoMode]);
+    void loadResume();
+    return () => { cancelled = true; };
+  }, [user.id, user.isAuthenticated, isDemoMode]);
 
   const enterDemoMode = () => {
     setIsDemoMode(true);
@@ -299,6 +311,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSavedJobIds(['job-101', 'job-103']);
     setApplications(initialApplications);
     setNotifications(initialNotifications);
+    setSources(initialSources);
+    setResume({ text: demoResumeText, name: 'Sample Resume (Demo)', lastUpdated: new Date().toISOString(), extractedSkills: ['TypeScript', 'React', 'Node.js', 'Python'], parsedRole: 'Sample Software Engineer', extractionStatus: 'completed', profileVersion: 1 });
+    setSchedule({ enabled: false, frequencyType: 'hourly', frequencyValue: 4, lastScanTime: '', nextScanTime: '', lastSuccessfulScanJobsCount: 0, sourceFailuresCount: 0, status: 'idle' });
     setActiveView('dashboard');
     showToast('Entered Interactive Demo Mode (Sample Data).', 'info');
   };
@@ -310,6 +325,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setSavedJobIds([]);
       setApplications([]);
       setNotifications([]);
+      setSources([]);
+      setResume(emptyResume);
+      setSchedule({ enabled: false, frequencyType: 'hourly', frequencyValue: 4, lastScanTime: '', nextScanTime: '', lastSuccessfulScanJobsCount: 0, sourceFailuresCount: 0, status: 'idle' });
       setActiveView('home');
     }
     showToast('Exited Demo Mode.', 'info');
@@ -333,6 +351,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSavedJobIds([]);
         setApplications([]);
         setNotifications([]);
+        setSources([]);
       }
     });
 
@@ -350,6 +369,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSavedJobIds([]);
         setApplications([]);
         setNotifications([]);
+        setSources([]);
         if (window.location.pathname !== '/reset-password' && !window.location.hash.includes('type=recovery')) {
           setActiveView('resume');
         }
@@ -358,6 +378,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } else if (event === 'SIGNED_OUT') {
         setUser((prev) => ({ ...prev, id: '', email: '', name: '', isAuthenticated: false }));
         setIsDemoMode(false);
+        setJobs([]);
+        setSavedJobIds([]);
+        setApplications([]);
+        setNotifications([]);
+        setSources([]);
+        setResume(emptyResume);
+        setSchedule({ enabled: false, frequencyType: 'hourly', frequencyValue: 4, lastScanTime: '', nextScanTime: '', lastSuccessfulScanJobsCount: 0, sourceFailuresCount: 0, status: 'idle' });
         setActiveView('home');
       }
     });
@@ -373,89 +400,64 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const fetchUserData = async () => {
       try {
-        // 1. Load saved jobs
-        const { data: userJobs } = await supabase
-          .from('user_jobs')
-          .select('job_id')
-          .eq('user_id', user.id)
-          .eq('is_saved', true);
-
-        if (userJobs) {
-          setSavedJobIds(userJobs.map((j: any) => j.job_id));
-        }
-
-        // 2. Load applications
-        const { data: apps } = await supabase
-          .from('applications')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('applied_date', { ascending: false });
-
-        if (apps && apps.length > 0) {
-          setApplications(apps.map((a: any) => ({
-            id: a.id,
-            jobId: a.job_id,
-            jobTitle: a.job_title,
-            company: a.company,
-            location: a.location || 'Remote',
-            originalUrl: a.original_url || 'https://linkedin.com/jobs',
-            status: a.status || 'Applied',
-            appliedDate: a.applied_date || new Date().toISOString(),
-            lastUpdatedDate: a.last_updated_date || new Date().toISOString(),
-            notes: a.notes || '',
-            salary: a.salary || '',
-            contactPerson: a.contact_person || '',
-            followUpNeeded: a.follow_up_needed || false,
-          })));
-        }
-
-        // 3. Load notifications
-        const { data: notifs } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (notifs && notifs.length > 0) {
-          setNotifications(notifs.map((n: any) => ({
-            id: n.id,
-            title: n.title,
-            message: n.message,
-            read: n.read,
-            type: n.type || 'system',
-            timestamp: n.created_at,
-            link: n.link,
-          })));
-        }
-
-        // 4. Load genuinely scored recommendations from durable scan results.
-        const recommendations = await fetchRecommendedJobsApi();
-        if (recommendations.length > 0) setJobs(recommendations);
-        // 5. Load scan schedule
-        const { data: sched } = await supabase
-          .from('scan_schedules')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (sched) {
-          setSchedule((prev) => ({
-            ...prev,
-            enabled: sched.enabled,
-            frequencyType: sched.frequency_type || 'hourly',
-            frequencyValue: sched.frequency_value || 4,
-            lastScanTime: sched.last_scan_time,
-            nextScanTime: sched.next_scan_time,
-            lastSuccessfulScanJobsCount: sched.last_successful_jobs_count || 0,
-            sourceFailuresCount: sched.source_failures_count || 0,
-            status: sched.status || 'idle',
-          }));
-        }
+        const [discoveredJobs, savedJobs] = await Promise.all([
+          fetchDiscoveredJobsApi(),
+          fetchSavedJobsApi(),
+        ]);
+        const savedIds = savedJobs.map((job) => job.id);
+        setSavedJobIds(savedIds);
+        const allJobs = new Map<string, Job>();
+        for (const job of discoveredJobs) allJobs.set(job.id, job);
+        for (const job of savedJobs) if (!allJobs.has(job.id)) allJobs.set(job.id, job);
+        setJobs(Array.from(allJobs.values()).map((job) => ({ ...job, saved: savedIds.includes(job.id) })));
       } catch (err) {
-        console.warn('Real user data sync error:', err);
+        console.warn('Saved/discovered jobs sync failed:', err);
+        showToast('Could not load saved or discovered jobs. Try refreshing after checking the backend.', 'error');
+      }
+
+      try {
+        const { data: apps, error: appsError } = await supabase
+          .from('applications').select('*').eq('user_id', user.id).order('applied_date', { ascending: false });
+        if (appsError) throw appsError;
+        setApplications((apps || []).map((a: any) => ({
+          id: a.id, jobId: a.job_id || undefined, jobTitle: a.job_title, company: a.company,
+          location: a.location || 'Not specified', originalUrl: a.original_url || '',
+          status: a.status || 'Applied', appliedDate: a.applied_date || new Date().toISOString(),
+          lastUpdatedDate: a.last_updated_date || a.applied_date || new Date().toISOString(),
+          notes: a.notes || '', salary: a.salary || '', contactPerson: a.contact_person || '',
+          followUpNeeded: a.follow_up_needed || false,
+        })));
+      } catch (err) {
+        console.warn('Applications sync failed:', err);
+      }
+
+      try {
+        const { data: notifs, error: notificationError } = await supabase
+          .from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+        if (notificationError) throw notificationError;
+        setNotifications((notifs || []).map((n: any) => ({
+          id: n.id, title: n.title, message: n.message, read: Boolean(n.read),
+          type: n.type || 'system', timestamp: n.created_at, link: n.link || undefined,
+        })));
+      } catch (err) {
+        console.warn('Notifications sync failed:', err);
+      }
+
+      try {
+        const savedSchedule = await fetchScanSchedule();
+        setSchedule(savedSchedule);
+      } catch (err) {
+        console.warn('Schedule sync failed:', err);
+        showToast('Could not load your saved scan schedule.', 'error');
+      }
+
+      try {
+        setSources(await fetchSourcesApi());
+      } catch (err) {
+        console.warn('Source configuration lookup failed:', err);
+        setSources([]);
       }
     };
-
     fetchUserData();
   }, [user.id, user.isAuthenticated, isDemoMode]);
 
@@ -548,7 +550,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const logoutUser = async () => {
     if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
+      try {
+        const { error } = await supabase.auth.signOut();
+        if (error) console.warn('Remote sign-out warning; local session state will still be cleared:', error.message);
+      } catch (error: any) {
+        console.warn('Remote sign-out failed; local session state will still be cleared:', error?.message || error);
+      }
     }
     setUser((prev) => ({ ...prev, id: '', email: '', name: '', isAuthenticated: false }));
     setIsDemoMode(false);
@@ -557,6 +564,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setApplications([]);
     setNotifications([]);
     setActiveView('home');
+    setJobs([]); setSavedJobIds([]); setApplications([]); setNotifications([]); setResume(emptyResume);
+    setSchedule({ enabled: false, frequencyType: 'hourly', frequencyValue: 4, lastScanTime: '', nextScanTime: '', lastSuccessfulScanJobsCount: 0, sourceFailuresCount: 0, status: 'idle' });
     showToast('Logged out successfully.', 'info');
   };
 
@@ -587,87 +596,113 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteUserAccount = async () => {
     try {
       await deleteAccountApi();
-      if (isSupabaseConfigured) {
-        await supabase.auth.signOut();
-      }
-    } catch (err) {
-      console.warn('Account deletion warning:', err);
+      if (isSupabaseConfigured) await supabase.auth.signOut();
+      setUser({
+        id: '', email: '', name: '', isAuthenticated: false, role: 'Candidate', joinedDate: 'October 2026',
+        preferences: { pushNotifications: false, highMatchAlerts: true, emailSummaries: true, autoSaveHighMatches: false },
+      });
+      setIsDemoMode(false);
+      setJobs([]); setSavedJobIds([]); setApplications([]); setNotifications([]); setResume(emptyResume);
+      setSchedule({ enabled: false, frequencyType: 'hourly', frequencyValue: 4, lastScanTime: '', nextScanTime: '', lastSuccessfulScanJobsCount: 0, sourceFailuresCount: 0, status: 'idle' });
+      setActiveView('home');
+      showToast('Your account and associated data were deleted.', 'success');
+    } catch (err: any) {
+      console.error('Account deletion failed:', err);
+      showToast(err?.message || 'Account deletion failed. Your session was kept; please retry or contact support.', 'error');
     }
-    setUser({
-      id: '',
-      email: '',
-      name: '',
-      isAuthenticated: false,
-      role: 'Candidate',
-      joinedDate: 'October 2026',
-      preferences: {
-        pushNotifications: false,
-        highMatchAlerts: true,
-        emailSummaries: true,
-        autoSaveHighMatches: false,
-      },
-    });
-    setIsDemoMode(false);
-    setActiveView('home');
-    showToast('Your account and associated resume data have been permanently deleted.', 'info');
   };
 
   const toggleSaveJob = async (jobId: string) => {
     const isSaved = savedJobIds.includes(jobId);
-    if (isSaved) {
-      setSavedJobIds((prev) => prev.filter((id) => id !== jobId));
-      showToast('Job removed from saved list.', 'info');
-      if (isSupabaseConfigured && user.isAuthenticated && !isDemoMode && user.id) {
-        await supabase.from('user_jobs').delete().eq('user_id', user.id).eq('job_id', jobId);
-      }
-    } else {
-      setSavedJobIds((prev) => [...prev, jobId]);
-      showToast('Job saved to your list.', 'success');
-      if (isSupabaseConfigured && user.isAuthenticated && !isDemoMode && user.id) {
-        await supabase.from('user_jobs').upsert(
-          {
-            user_id: user.id,
-            job_id: jobId,
-            is_saved: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id,job_id' }
-        );
-      }
+    const targetJob = jobs.find((job) => job.id === jobId);
+    if (!targetJob && !isSaved) {
+      showToast('This job is no longer available in the current list. Refresh jobs and retry.', 'error');
+      return;
+    }
+    if (isDemoMode) {
+      setSavedJobIds((prev) => isSaved ? prev.filter((id) => id !== jobId) : [...prev, jobId]);
+      setJobs((prev) => prev.map((job) => job.id === jobId ? { ...job, saved: !isSaved } : job));
+      showToast(isSaved ? 'Job removed from demo saved list.' : 'Job saved in demo mode.', 'info');
+      return;
+    }
+    if (!user.isAuthenticated) {
+      showToast('Sign in to save jobs to your account.', 'error');
+      return;
+    }
+    try {
+      if (isSaved) await removeSavedJobApi(jobId);
+      else if (targetJob) await saveJobApi(targetJob);
+      setSavedJobIds((prev) => isSaved ? prev.filter((id) => id !== jobId) : prev.includes(jobId) ? prev : [...prev, jobId]);
+      setJobs((prev) => prev.map((job) => job.id === jobId ? { ...job, saved: !isSaved } : job));
+      showToast(isSaved ? 'Job removed from saved list.' : 'Job saved to your account.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Could not update saved jobs.', 'error');
     }
   };
 
-  const addCustomJob = (jobData: Partial<Job>) => {
+  const addCustomJob = async (jobData: Partial<Job>): Promise<boolean> => {
+    const title = String(jobData.title || '').trim();
+    const company = String(jobData.company || '').trim();
+    if (!title || !company) {
+      showToast('Job title and company are required.', 'error');
+      return false;
+    }
     const newJob: Job = {
-      id: `job-custom-${Date.now()}`,
-      title: jobData.title || 'Untitled Opportunity',
-      company: jobData.company || 'Direct Employer',
-      location: jobData.location || 'Remote',
+      id: `demo-custom-${Date.now()}`,
+      title,
+      company,
+      location: jobData.location?.trim() || 'Not specified',
       source: 'User Custom Entry',
       postedDate: new Date().toISOString(),
-      matchScore: jobData.matchScore || 88,
-      salary: jobData.salary || 'Competitive',
-      type: jobData.type || 'Full-time',
-      experienceLevel: jobData.experienceLevel || 'Mid-Senior',
-      workplaceType: jobData.workplaceType || 'Remote',
-      originalUrl: jobData.originalUrl || 'https://linkedin.com/jobs',
-      description: jobData.description || 'Custom added job listing.',
-      skillsRequired: jobData.skillsRequired || ['TypeScript', 'React'],
-      verified: true,
+      matchScore: null,
+      salary: jobData.salary?.trim() || undefined,
+      type: jobData.type || 'Not specified',
+      experienceLevel: jobData.experienceLevel || 'Not specified',
+      workplaceType: jobData.workplaceType || 'Not specified',
+      originalUrl: jobData.originalUrl?.trim() || '',
+      description: jobData.description?.trim() || '',
+      skillsRequired: Array.isArray(jobData.skillsRequired) ? jobData.skillsRequired.filter(Boolean) : [],
+      verified: false,
       saved: true,
     };
-
-    setJobs((prev) => [newJob, ...prev]);
-    setSavedJobIds((prev) => [...prev, newJob.id]);
-    showToast(`Custom job "${newJob.title}" added and saved!`, 'success');
+    if (isDemoMode) {
+      setJobs((prev) => [newJob, ...prev]);
+      setSavedJobIds((prev) => [newJob.id, ...prev]);
+      showToast(`Custom job "${newJob.title}" added to demo data.`, 'info');
+      return true;
+    }
+    if (!user.isAuthenticated) {
+      showToast('Sign in to add a custom job.', 'error');
+      return false;
+    }
+    try {
+      const persisted = await addCustomJobApi(newJob);
+      await saveJobApi(persisted);
+      setJobs((prev) => [persisted, ...prev.filter((job) => job.id !== persisted.id)]);
+      setSavedJobIds((prev) => prev.includes(persisted.id) ? prev : [...prev, persisted.id]);
+      showToast(`Custom job "${persisted.title}" added. No match score was fabricated.`, 'success');
+      return true;
+    } catch (err: any) {
+      showToast(err?.message || 'Could not save this custom job.', 'error');
+      return false;
+    }
   };
 
   const evaluateJobMatch = async (jobId: string): Promise<MatchResult | null> => {
     const targetJob = jobs.find((j) => j.id === jobId);
     if (!targetJob) return null;
+    if (isDemoMode) {
+      showToast('Real AI matching is disabled in Demo Mode. Sign in and connect your own Gemini key to evaluate actual jobs.', 'info');
+      return null;
+    }
+    if (!user.isAuthenticated || !resume.text.trim()) {
+      showToast('Sign in and save your resume before evaluating job matches.', 'error');
+      setActiveView('resume');
+      return null;
+    }
     showToast('Evaluating resume match using Gemini model fallback...', 'info');
     try {
-      const result = await matchResumeWithJob(targetJob.title, targetJob.company, targetJob.description, resume.text);
+      const result = await matchResumeWithJob(targetJob.title, targetJob.company, targetJob.description, resume.text, targetJob.id);
       setJobs((prev) => prev.map((j) => j.id === jobId ? { ...j, matchScore: result.score, matchResult: result } : j));
       showToast(`Match score calculated: ${result.score}% using real AI evaluation.`, 'success');
       return result;
@@ -677,171 +712,215 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
   const addApplication = async (appData: Partial<Application>) => {
-    const newApp: Application = {
-      id: `app-${Date.now()}`,
-      jobId: appData.jobId,
-      jobTitle: appData.jobTitle || 'New Role',
-      company: appData.company || 'Company',
-      location: appData.location || 'Remote',
-      originalUrl: appData.originalUrl || 'https://linkedin.com/jobs',
-      status: appData.status || 'Applied',
-      appliedDate: new Date().toISOString(),
-      lastUpdatedDate: new Date().toISOString(),
-      notes: appData.notes || '',
-      salary: appData.salary || '',
-      contactPerson: appData.contactPerson || '',
-      followUpNeeded: false,
+    const jobTitle = String(appData.jobTitle || '').trim();
+    const company = String(appData.company || '').trim();
+    if (!jobTitle || !company) { showToast('A job title and company are required to track an application.', 'error'); return; }
+
+    const now = new Date().toISOString();
+    const localRecord: Application = {
+      id: `demo-app-${Date.now()}`, jobId: appData.jobId, jobTitle, company,
+      location: appData.location?.trim() || 'Not specified', originalUrl: appData.originalUrl?.trim() || '',
+      status: appData.status || 'Applied', appliedDate: now, lastUpdatedDate: now,
+      notes: appData.notes || '', salary: appData.salary || '', contactPerson: appData.contactPerson || '', followUpNeeded: false,
     };
 
-    setApplications((prev) => [newApp, ...prev]);
-    showToast(`Application for "${newApp.jobTitle}" tracked!`, 'success');
-
-    if (isSupabaseConfigured && user.isAuthenticated && !isDemoMode && user.id) {
-      try {
-        await supabase.from('applications').insert({
-          user_id: user.id,
-          job_id: newApp.jobId && newApp.jobId.length === 36 ? newApp.jobId : null,
-          job_title: newApp.jobTitle,
-          company: newApp.company,
-          location: newApp.location,
-          original_url: newApp.originalUrl,
-          status: newApp.status,
-          applied_date: newApp.appliedDate,
-          notes: newApp.notes,
-          salary: newApp.salary,
-          contact_person: newApp.contactPerson,
-        });
-      } catch (e) {
-        console.warn('DB application insert warning:', e);
-      }
+    if (isDemoMode) {
+      setApplications((prev) => [localRecord, ...prev]);
+      showToast(`Demo application for "${jobTitle}" tracked locally.`, 'info');
+      return;
+    }
+    if (!user.isAuthenticated || !user.id || !isSupabaseConfigured) {
+      showToast('Sign in with a configured Supabase backend before tracking a real application.', 'error');
+      return;
+    }
+    try {
+      const { data, error } = await supabase.from('applications').insert({
+        user_id: user.id, job_id: appData.jobId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(appData.jobId) ? appData.jobId : null,
+        job_title: jobTitle, company, location: localRecord.location, original_url: localRecord.originalUrl,
+        status: localRecord.status, applied_date: now, last_updated_date: now, notes: localRecord.notes,
+        salary: localRecord.salary, contact_person: localRecord.contactPerson, follow_up_needed: false,
+      }).select('*').single();
+      if (error) throw error;
+      if (!data) throw new Error('The database did not confirm the application record.');
+      const savedRecord: Application = {
+        id: data.id, jobId: data.job_id || undefined, jobTitle: data.job_title, company: data.company,
+        location: data.location || 'Not specified', originalUrl: data.original_url || '', status: data.status || 'Applied',
+        appliedDate: data.applied_date || now, lastUpdatedDate: data.last_updated_date || now,
+        notes: data.notes || '', salary: data.salary || '', contactPerson: data.contact_person || '', followUpNeeded: Boolean(data.follow_up_needed),
+      };
+      setApplications((prev) => [savedRecord, ...prev]);
+      showToast(`Application for "${savedRecord.jobTitle}" was saved.`, 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Application could not be saved. No success was recorded.', 'error');
     }
   };
 
   const updateApplicationStatus = async (id: string, status: ApplicationStatus) => {
-    setApplications((prev) =>
-      prev.map((app) =>
-        app.id === id
-          ? {
-              ...app,
-              status,
-              lastUpdatedDate: new Date().toISOString(),
-              followUpNeeded: false,
-            }
-          : app
-      )
-    );
-    showToast(`Application status updated to ${status}.`, 'success');
-
-    if (isSupabaseConfigured && user.isAuthenticated && !isDemoMode && user.id) {
-      await supabase.from('applications').update({
-        status,
-        last_updated_date: new Date().toISOString(),
-      }).eq('id', id).eq('user_id', user.id);
+    if (isDemoMode) {
+      setApplications((prev) => prev.map((app) => app.id === id ? { ...app, status, lastUpdatedDate: new Date().toISOString(), followUpNeeded: false } : app));
+      showToast(`Demo application status updated to ${status}.`, 'info');
+      return;
     }
+    if (!user.isAuthenticated || !user.id || !isSupabaseConfigured) { showToast('Sign in to update a saved application.', 'error'); return; }
+    const updatedAt = new Date().toISOString();
+    try {
+      const { data, error } = await supabase.from('applications').update({ status, last_updated_date: updatedAt })
+        .eq('id', id).eq('user_id', user.id).select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Application not found for this account.');
+      setApplications((prev) => prev.map((app) => app.id === id ? { ...app, status, lastUpdatedDate: updatedAt, followUpNeeded: false } : app));
+      showToast(`Application status updated to ${status}.`, 'success');
+    } catch (error: any) { showToast(error?.message || 'Application status could not be saved.', 'error'); }
   };
 
   const deleteApplication = async (id: string) => {
-    setApplications((prev) => prev.filter((app) => app.id !== id));
-    showToast('Application deleted.', 'info');
-
-    if (isSupabaseConfigured && user.isAuthenticated && !isDemoMode && user.id) {
-      await supabase.from('applications').delete().eq('id', id).eq('user_id', user.id);
+    if (isDemoMode) {
+      setApplications((prev) => prev.filter((app) => app.id !== id));
+      showToast('Demo application removed locally.', 'info');
+      return;
     }
+    if (!user.isAuthenticated || !user.id || !isSupabaseConfigured) { showToast('Sign in to delete a saved application.', 'error'); return; }
+    try {
+      const { data, error } = await supabase.from('applications').delete().eq('id', id).eq('user_id', user.id).select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Application not found for this account.');
+      setApplications((prev) => prev.filter((app) => app.id !== id));
+      showToast('Application deleted.', 'success');
+    } catch (error: any) { showToast(error?.message || 'Application could not be deleted.', 'error'); }
   };
 
   const updateResume = async (text: string, name?: string, file?: File) => {
-    if (file && isSupabaseConfigured && user.id) {
-      try {
-        await uploadResumeFile(user.id, file);
-      } catch (err: any) {
-        showToast(err.message || 'File upload failed.', 'error');
-      }
+    if (!text.trim()) {
+      showToast('Extracted resume text is empty. Upload a text-readable PDF/DOCX or paste resume text.', 'error');
+      throw new Error('Resume text is empty.');
     }
-
-    const updated = await saveResumeApi(text, name, user.id || 'user-001');
+    if (isDemoMode) {
+      setResume({ text, name: name || 'Sample Resume (Demo)', lastUpdated: new Date().toISOString(), extractedSkills: [], parsedRole: '', extractionStatus: 'completed', profileVersion: (resume.profileVersion || 0) + 1 });
+      showToast('Demo resume updated locally; it was not sent to the backend.', 'info');
+      return;
+    }
+    if (!user.isAuthenticated || !user.id) throw new Error('Sign in before saving a resume.');
+    if (file) {
+      if (!isSupabaseConfigured) throw new Error('Supabase must be configured to upload a resume file securely.');
+      await uploadResumeFile(user.id, file);
+    }
+    const updated = await saveResumeApi(text, name || file?.name, user.id);
     setResume(updated);
-    showToast('Resume uploaded and structured profile updated!', 'success');
+    showToast('Resume text and structured profile saved to your account.', 'success');
   };
 
   const reprocessResumeProfile = async () => {
-    showToast('Extracting structured profile with Gemini AI...', 'info');
-    const result = await extractResumeProfileApi(resume.text, resume.name, user.id || 'user-001');
-    if (result && result.profile) {
-      setResume((prev) => ({
-        ...prev,
-        extractedSkills: result.skills || prev.extractedSkills,
-        parsedRole: result.role || prev.parsedRole,
-        profile: result.profile,
-        extractionStatus: 'completed',
-        profileVersion: (prev.profileVersion || 1) + 1,
-      }));
-      showToast('Structured competencies and credentials refreshed!', 'success');
-    } else {
-      showToast('Profile extraction completed with fallback values.', 'info');
+    if (!resume.text.trim()) {
+      showToast('Upload and save your resume before extracting a profile.', 'error');
+      return;
+    }
+    showToast('Extracting structured profile from the saved resume...', 'info');
+    try {
+      const result = await extractResumeProfileApi(undefined, resume.name, user.id);
+      if (!result?.profile) throw new Error('The backend did not return a structured profile.');
+      const refreshed = await fetchResumeApi();
+      if (refreshed) setResume(refreshed);
+      else setResume((prev) => ({ ...prev, extractedSkills: result.skills || [], parsedRole: result.role || '', profile: result.profile, extractionStatus: 'completed' }));
+      showToast('Structured profile refreshed from the saved resume.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Profile extraction failed. No fabricated profile was saved.', 'error');
     }
   };
 
   const deleteResumeProfile = async () => {
-    const success = await deleteResumeApi(user.id || 'user-001');
-    if (success) {
-      setResume({
-        text: '',
-        name: 'No Resume Stored',
-        lastUpdated: new Date().toISOString(),
-        extractedSkills: [],
-        parsedRole: 'Candidate',
-        profile: undefined,
-        extractionStatus: 'idle',
-        profileVersion: 0,
-      });
-      showToast('Resume memory and profile permanently cleared.', 'info');
-    } else {
-      showToast('Failed to delete resume profile.', 'error');
+    if (isDemoMode) {
+      setResume(emptyResume);
+      showToast('Demo resume cleared locally.', 'info');
+      return;
+    }
+    try {
+      const success = await deleteResumeApi(user.id);
+      if (!success) throw new Error('Backend did not confirm resume deletion.');
+      setResume(emptyResume);
+      showToast('Resume and structured profile cleared.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to delete resume profile.', 'error');
     }
   };
 
   const updateSchedule = async (newSchedule: Partial<ScanSchedule>) => {
-    const updated = await updateScheduleApi(newSchedule);
-    setSchedule((prev) => ({ ...prev, ...updated }));
-    showToast('Scan schedule preferences saved.', 'success');
+    if (isDemoMode) {
+      setSchedule((prev) => ({ ...prev, ...newSchedule, status: prev.status }));
+      showToast('Demo schedule updated locally. It will not run in the background.', 'info');
+      return;
+    }
+    try {
+      const updated = await updateScheduleApi(newSchedule);
+      setSchedule(updated);
+      showToast(updated.enabled ? 'Background scan schedule saved.' : 'Background scans disabled; preferences saved.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Schedule could not be saved. Your previous schedule remains active.', 'error');
+    }
   };
 
   const runScanNow = async () => {
+    if (isDemoMode) {
+      showToast('Demo Mode does not run real background scans. Sign in and configure a resume to scan genuine vacancies.', 'info');
+      return;
+    }
+    if (!user.isAuthenticated || !resume.text.trim()) {
+      showToast('Sign in and upload/save your resume before running a scan.', 'error');
+      setActiveView('resume');
+      return;
+    }
     setSchedule((prev) => ({ ...prev, status: 'running' }));
-    showToast('Running live job-source discovery and AI matching...', 'info');
+    showToast('Scan queued on the backend. You can leave this page while the worker runs.', 'info');
     try {
       const result = await triggerDiscoveryScan();
-      const recommendations = await fetchRecommendedJobsApi();
-      if (recommendations.length > 0) setJobs(recommendations);
-      const completedAt = new Date().toISOString();
-      setSchedule((prev) => ({
-        ...prev,
-        status: 'completed',
-        lastScanTime: completedAt,
-        nextScanTime: result.nextScanTime || prev.nextScanTime,
-        lastSuccessfulScanJobsCount: Number(result.jobsDiscovered || 0),
-      }));
-      if (result.aiScoringExhausted || (result.jobsDiscovered > 0 && result.aiScoringConfigured && Number(result.scoredJobsCount || 0) === 0)) {
-        showToast(`Live scan found ${result.jobsDiscovered} jobs, but AI scoring was unavailable or quota-limited. Listings were saved without fabricated scores; check your Gemini key/quota and retry on the next schedule.`, 'info');
+      const [discoveredJobs, savedJobs, savedSchedule] = await Promise.all([
+        fetchDiscoveredJobsApi(), fetchSavedJobsApi(), fetchScanSchedule(),
+      ]);
+      const allJobs = new Map<string, Job>();
+      for (const job of discoveredJobs) allJobs.set(job.id, job);
+      for (const job of savedJobs) if (!allJobs.has(job.id)) allJobs.set(job.id, job);
+      const savedIds = savedJobs.map((job) => job.id);
+      setJobs(Array.from(allJobs.values()).map((job) => ({ ...job, saved: savedIds.includes(job.id) })));
+      setSavedJobIds(savedIds);
+      setSchedule(savedSchedule);
+      if (result.aiScoringError || result.aiScoringExhausted || (result.jobsDiscovered > 0 && result.aiScoringConfigured && Number(result.scoredJobsCount || 0) === 0)) {
+        showToast(result.aiScoringError || `Scan discovered ${result.jobsDiscovered} jobs, but AI scoring was unavailable. Unscored jobs were saved without invented scores.`, 'info');
       } else if (result.aiScoringConfigured === false) {
-        showToast(`Live scan found ${result.jobsDiscovered} jobs, but AI scoring is waiting for your Gemini API key.`, 'info');
+        showToast(`Scan discovered ${result.jobsDiscovered} jobs. Connect your personal Gemini key for AI match scores.`, 'info');
       } else {
-        showToast(`Live scan completed: ${result.jobsDiscovered} jobs discovered, ${result.highMatchJobsCount} high matches.`, 'success');
+        showToast(`Scan completed: ${result.jobsDiscovered} jobs discovered, ${result.highMatchJobsCount} high matches.`, 'success');
       }
     } catch (error: any) {
       setSchedule((prev) => ({ ...prev, status: 'error' }));
-      showToast(error?.message || 'Live scan failed. Check backend status and job-source connectivity.', 'error');
+      showToast(error?.message || 'Live scan did not finish. Check scan history and backend worker health.', 'error');
     }
   };
-  const markNotificationAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+
+  const markNotificationAsRead = async (id: string) => {
+    if (isDemoMode) {
+      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+      return;
+    }
+    try {
+      await markNotificationReadApi(id);
+      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    } catch (err: any) {
+      showToast(err?.message || 'Could not mark notification as read.', 'error');
+    }
   };
 
-  const clearAllNotifications = () => {
-    setNotifications([]);
-    showToast('All notifications cleared.', 'info');
+  const clearAllNotifications = async () => {
+    if (isDemoMode) {
+      setNotifications([]);
+      showToast('Demo notifications cleared locally.', 'info');
+      return;
+    }
+    try {
+      await clearNotificationsApi();
+      setNotifications([]);
+      showToast('All notifications cleared.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Could not clear notifications.', 'error');
+    }
   };
 
   const requestPushPermission = async () => {

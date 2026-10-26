@@ -1,4 +1,4 @@
-import { Job, MatchResult, ScanSchedule, Resume } from '../types';
+import { Job, MatchResult, ScanSchedule, Resume, SourceHealth } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -45,15 +45,11 @@ export async function deleteGeminiApiKey(): Promise<void> {
   if (!res.ok) throw new Error(body.error || `Gemini key deletion failed (${res.status}).`);
 }
 export async function fetchRecommendedJobsApi(): Promise<Job[]> {
-  try {
-    const res = await fetch('/api/jobs/recommended', { headers: await getAuthHeaders() });
-    if (!res.ok) return [];
-    const body = await res.json();
-    return Array.isArray(body) ? body as Job[] : [];
-  } catch (error) {
-    console.warn('Recommended jobs fetch warning:', error);
-    return [];
-  }
+  const res = await fetch('/api/jobs/recommended', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to fetch recommendations (${res.status}).`);
+  if (!Array.isArray(body)) throw new Error('The backend returned an invalid recommendations response.');
+  return body as Job[];
 }
 export async function fetchHealthStatus() {
   try {
@@ -70,174 +66,209 @@ export async function matchResumeWithJob(
   jobTitle: string,
   jobCompany: string,
   jobDescription: string,
-  resumeText?: string
+  _resumeText?: string,
+  jobId?: string
 ): Promise<MatchResult> {
+  // The backend loads the canonical resume and job data from this authenticated user's records.
   const headers = await getAuthHeaders();
   const res = await fetch('/api/gemini/match', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ jobTitle, jobCompany, jobDescription, resumeText }),
+    body: JSON.stringify({ jobId }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Gemini matching failed (${res.status}).`);
   return body as MatchResult;
-}export async function triggerDiscoveryScan(): Promise<{ success: boolean; jobsDiscovered: number; newJobsFound: number; highMatchJobsCount: number; nextScanTime: string; aiScoringConfigured?: boolean; aiScoringExhausted?: boolean; scoredJobsCount?: number; message?: string; error?: string }> {
+}
+
+export interface DiscoveryScanResult {
+  success: boolean;
+  jobsDiscovered: number;
+  newJobsFound: number;
+  highMatchJobsCount: number;
+  nextScanTime: string;
+  aiScoringConfigured?: boolean;
+  aiScoringExhausted?: boolean;
+  aiScoringError?: string;
+  scoredJobsCount?: number;
+  message?: string;
+  error?: string;
+}
+
+export async function triggerDiscoveryScan(): Promise<DiscoveryScanResult> {
   const headers = await getAuthHeaders();
-  const res = await fetch('/api/scan/trigger', { method: 'POST', headers });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Live scan failed (${res.status}).`);
-  return body;
-}export async function fetchScanSchedule(): Promise<ScanSchedule> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/schedule', { headers });
-    if (!res.ok) throw new Error('Failed to fetch schedule');
-    return await res.json();
-  } catch (err) {
-    return {
-      enabled: true,
-      frequencyType: 'hourly',
-      frequencyValue: 4,
-      lastScanTime: new Date(Date.now() - 3600000 * 2).toISOString(),
-      nextScanTime: new Date(Date.now() + 3600000 * 2).toISOString(),
-      lastSuccessfulScanJobsCount: 14,
-      sourceFailuresCount: 0,
-      status: 'idle',
-    };
+  const startResponse = await fetch('/api/scan/trigger', { method: 'POST', headers });
+  const startBody = await startResponse.json().catch(() => ({}));
+  if (!startResponse.ok) throw new Error(startBody.error || `Live scan failed (${startResponse.status}).`);
+  if (startBody.status === 'completed' && startBody.result) return startBody.result as DiscoveryScanResult;
+  if (startBody.status === 'failed') throw new Error(startBody.error || 'The scan failed. Check scan history for details.');
+  if (!startBody.runId) {
+    // Backward compatibility while an older backend deployment is being replaced.
+    if (typeof startBody.jobsDiscovered === 'number') return startBody as DiscoveryScanResult;
+    throw new Error('The backend accepted no scan run ID. Check that the latest backend and scan_runs migration are deployed.');
   }
+
+  const runId = String(startBody.runId);
+  for (let attempt = 0; attempt < 90; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const statusResponse = await fetch(`/api/scan/runs/${encodeURIComponent(runId)}`, { headers: await getAuthHeaders() });
+    const statusBody = await statusResponse.json().catch(() => ({}));
+    if (!statusResponse.ok) throw new Error(statusBody.error || `Scan status check failed (${statusResponse.status}).`);
+    if (statusBody.status === 'completed' && statusBody.result) return statusBody.result as DiscoveryScanResult;
+    if (statusBody.status === 'failed') throw new Error(statusBody.error || statusBody.result?.error || 'The scan failed. Check scan history for details.');
+  }
+  throw new Error('The scan is still queued or running in the background. Reopen scan results shortly; the worker continues independently of this page.');
+}
+
+export async function fetchScanSchedule(): Promise<ScanSchedule> {
+  const res = await fetch('/api/schedule', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to fetch schedule (${res.status}).`);
+  return body as ScanSchedule;
 }
 
 export async function updateScanSchedule(schedule: Partial<ScanSchedule>): Promise<ScanSchedule> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/schedule', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(schedule),
-    });
-    if (!res.ok) throw new Error('Failed to update schedule');
-    return await res.json();
-  } catch (err) {
-    console.warn('Update schedule fallback:', err);
-    return schedule as ScanSchedule;
-  }
+  const res = await fetch('/api/schedule', {
+    method: 'POST',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify(schedule),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to update schedule (${res.status}).`);
+  return body as ScanSchedule;
 }
 
-export async function addCustomJobApi(jobData: any) {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/jobs/add', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(jobData),
-    });
-    if (!res.ok) throw new Error('Failed to add job');
-    return await res.json();
-  } catch (err) {
-    return {
-      id: `custom-${Date.now()}`,
-      ...jobData,
-      source: 'User Custom Entry',
-      postedDate: new Date().toISOString(),
-      verified: true,
-    };
-  }
+export async function addCustomJobApi(jobData: Partial<Job>): Promise<Job> {
+  const res = await fetch('/api/jobs/add', {
+    method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify(jobData),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to add job (${res.status}).`);
+  return body as Job;
 }
 
-export async function fetchResumeApi(userId?: string): Promise<Resume | null> {
-  try {
-    const headers = await getAuthHeaders();
-    const url = userId ? `/api/resume?userId=${encodeURIComponent(userId)}` : '/api/resume';
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('Failed to fetch resume');
-    const data = await res.json();
-    return {
-      text: data.text || data.content_text || '',
-      name: data.name || data.file_name || 'Resume.pdf',
-      lastUpdated: data.lastUpdated || data.updated_at || new Date().toISOString(),
-      extractedSkills: data.extractedSkills || data.extracted_skills || [],
-      parsedRole: data.parsedRole || data.profile?.headline || 'Software Engineer',
-      profile: data.profile || data.structured_profile,
-      extractionStatus: data.extractionStatus || data.extraction_status || 'completed',
-      profileVersion: data.profileVersion || data.profile_version || 1,
-    };
-  } catch (err) {
-    console.warn('Fetch resume warning:', err);
-    return null;
-  }
+export async function fetchDiscoveredJobsApi(): Promise<Job[]> {
+  const res = await fetch('/api/jobs/discovered', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to load discovered jobs (${res.status}).`);
+  if (!Array.isArray(body)) throw new Error('The backend returned an invalid discovered-jobs response.');
+  return body as Job[];
 }
 
-export async function saveResumeApi(resumeText: string, name?: string, userId?: string): Promise<Resume> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/resume', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ text: resumeText, name, userId }),
-    });
-    if (!res.ok) throw new Error('Failed to save resume');
-    const data = await res.json();
-    return {
-      text: data.text || resumeText,
-      name: data.name || name || 'Resume.pdf',
-      lastUpdated: data.lastUpdated || new Date().toISOString(),
-      extractedSkills: data.extractedSkills || [],
-      parsedRole: data.parsedRole || data.profile?.headline || 'Software Engineer',
-      profile: data.profile,
-      extractionStatus: data.extractionStatus || 'completed',
-      profileVersion: data.profileVersion || 1,
-    };
-  } catch (err) {
-    return {
-      text: resumeText,
-      name: name || 'Resume_2026.pdf',
-      lastUpdated: new Date().toISOString(),
-      extractedSkills: ['TypeScript', 'React', 'Node.js', 'Express', 'Python', 'PostgreSQL', 'Tailwind CSS', 'Docker', 'AWS'],
-    };
-  }
+export async function fetchSavedJobsApi(): Promise<Job[]> {
+  const res = await fetch('/api/jobs/saved', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to load saved jobs (${res.status}).`);
+  if (!Array.isArray(body)) throw new Error('The backend returned an invalid saved-jobs response.');
+  return body as Job[];
 }
 
-export async function extractResumeProfileApi(resumeText?: string, name?: string, userId?: string) {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/resume/extract', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ text: resumeText, name, userId }),
-    });
-    if (!res.ok) throw new Error('Failed to extract resume profile');
-    return await res.json();
-  } catch (err: any) {
-    console.warn('Extract profile api warning:', err);
-    return null;
-  }
+export async function saveJobApi(job: Job): Promise<void> {
+  const res = await fetch('/api/jobs/saved', {
+    method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ job }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Could not save job (${res.status}).`);
 }
 
-export async function deleteResumeApi(userId?: string): Promise<boolean> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/resume', {
-      method: 'DELETE',
-      headers,
-      body: JSON.stringify({ userId }),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('Delete resume api warning:', err);
-    return false;
-  }
+export async function removeSavedJobApi(jobId: string): Promise<void> {
+  const res = await fetch(`/api/jobs/saved/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE', headers: await getAuthHeaders(),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Could not remove saved job (${res.status}).`);
 }
 
-export async function deleteAccountApi(): Promise<boolean> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/user/account', {
-      method: 'DELETE',
-      headers,
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('Delete account api warning:', err);
-    return false;
-  }
+export async function markNotificationReadApi(id: string): Promise<void> {
+  const res = await fetch(`/api/notifications/${encodeURIComponent(id)}/read`, {
+    method: 'PATCH', headers: await getAuthHeaders(),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Could not update notification (${res.status}).`);
+}
+
+export async function clearNotificationsApi(): Promise<void> {
+  const res = await fetch('/api/notifications', { method: 'DELETE', headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Could not clear notifications (${res.status}).`);
+}
+
+export async function fetchResumeApi(_userId?: string): Promise<Resume | null> {
+  const res = await fetch('/api/resume', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to fetch resume (${res.status}).`);
+  if (!body) return null;
+  return {
+    text: body.text || body.content_text || '',
+    name: body.name || body.file_name || 'Resume',
+    lastUpdated: body.lastUpdated || body.updated_at || '',
+    extractedSkills: Array.isArray(body.extractedSkills) ? body.extractedSkills : Array.isArray(body.extracted_skills) ? body.extracted_skills : [],
+    parsedRole: body.parsedRole || body.profile?.headline || '',
+    profile: body.profile || body.structured_profile || undefined,
+    extractionStatus: body.extractionStatus || body.extraction_status || 'completed',
+    profileVersion: body.profileVersion || body.profile_version || 1,
+  };
+}
+
+export async function saveResumeApi(resumeText: string, name?: string, _userId?: string): Promise<Resume> {
+  const res = await fetch('/api/resume', {
+    method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ text: resumeText, name }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to save resume (${res.status}).`);
+  return {
+    text: body.text || resumeText,
+    name: body.name || name || 'Resume',
+    lastUpdated: body.lastUpdated || new Date().toISOString(),
+    extractedSkills: Array.isArray(body.extractedSkills) ? body.extractedSkills : [],
+    parsedRole: body.parsedRole || body.profile?.headline || '',
+    profile: body.profile || undefined,
+    extractionStatus: body.extractionStatus || 'completed',
+    profileVersion: body.profileVersion || 1,
+  };
+}
+
+export async function extractResumeProfileApi(resumeText?: string, name?: string, _userId?: string) {
+  const res = await fetch('/api/resume/extract', {
+    method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ text: resumeText, name }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Resume profile extraction failed (${res.status}).`);
+  return body;
+}
+
+export async function deleteResumeApi(_userId?: string): Promise<boolean> {
+  const res = await fetch('/api/resume', {
+    method: 'DELETE', headers: await getAuthHeaders(),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to delete resume (${res.status}).`);
+  return Boolean(body.success);
+}
+
+export async function deleteAccountApi(): Promise<void> {
+  const res = await fetch('/api/user/account', { method: 'DELETE', headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || body.success !== true) throw new Error(body.error || `Account deletion failed (${res.status}).`);
+}
+
+
+export async function fetchSourcesApi(): Promise<SourceHealth[]> {
+  const res = await fetch('/api/sources', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !Array.isArray(body)) throw new Error('Could not load source connector configuration.');
+  return body.map((source: any): SourceHealth => ({
+    id: String(source.sourceId || source.displayName || 'unknown'),
+    name: String(source.displayName || source.sourceId || 'Unknown source'),
+    type: source.sourceId === 'apify-linkedin' ? 'Apify LinkedIn Actor'
+      : source.sourceId === 'rapidapi-linkedin' ? 'RapidAPI LinkedIn'
+      : source.sourceId === 'public-feeds' ? 'Public RSS/ATS' : 'Direct Employer ATS',
+    status: source.apiKeyEnvVar === 'NONE' ? 'Available'
+      : source.isConfigured ? 'Configured (not health-tested)' : 'Credentials Required',
+    lastCheckTime: 'Not live-tested',
+    jobsIndexedCount: 0,
+    allowedRefreshInterval: 'Source-dependent',
+    requiresApiKey: source.apiKeyEnvVar !== 'NONE',
+    apiKeyName: source.apiKeyEnvVar === 'NONE' ? undefined : source.apiKeyEnvVar,
+  }));
 }

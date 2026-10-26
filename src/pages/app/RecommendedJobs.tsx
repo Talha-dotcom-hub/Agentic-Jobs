@@ -11,8 +11,8 @@ export const RecommendedJobs: React.FC = () => {
 
   // Filter to estimated match scores >= 85%
   const recommendedJobs = jobs
-    .filter((job) => job.matchScore >= 85)
-    .sort((a, b) => b.matchScore - a.matchScore);
+    .filter((job) => job.matchScore !== null && job.matchScore >= 85)
+    .sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1));
 
   return (
     <div className="space-y-6">
