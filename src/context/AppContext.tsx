@@ -154,11 +154,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
   });
 
-  const [jobs, setJobs] = useState<Job[]>(initialJobs);
-  const [savedJobIds, setSavedJobIds] = useState<string[]>(['job-101', 'job-103']);
-  const [applications, setApplications] = useState<Application[]>(initialApplications);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [sources] = useState<SourceHealth[]>(initialSources);
-  const [notifications, setNotifications] = useState<AppNotification[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const [resume, setResume] = useState<Resume>({
     text: defaultResumeText,
@@ -305,6 +305,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const exitDemoMode = () => {
     setIsDemoMode(false);
     if (!user.isAuthenticated) {
+      setJobs([]);
+      setSavedJobIds([]);
+      setApplications([]);
+      setNotifications([]);
       setActiveView('home');
     }
     showToast('Exited Demo Mode.', 'info');
@@ -324,6 +328,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           isAuthenticated: true,
         }));
         setIsDemoMode(false);
+        setJobs([]);
+        setSavedJobIds([]);
+        setApplications([]);
+        setNotifications([]);
       }
     });
 
@@ -337,6 +345,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           isAuthenticated: true,
         }));
         setIsDemoMode(false);
+        setJobs([]);
+        setSavedJobIds([]);
+        setApplications([]);
+        setNotifications([]);
+        if (window.location.pathname !== '/reset-password' && !window.location.hash.includes('type=recovery')) {
+          setActiveView('resume');
+        }
       } else if (event === 'PASSWORD_RECOVERY') {
         setActiveView('reset-password');
       } else if (event === 'SIGNED_OUT') {
@@ -475,7 +490,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setIsDemoMode(false);
-    setActiveView('dashboard');
+    setActiveView('resume');
     showToast(`Welcome back, ${name || email}!`, 'success');
   };
 
@@ -512,7 +527,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           preferences: user.preferences,
         });
         setIsDemoMode(false);
-        setActiveView('dashboard');
+        setActiveView('resume');
         showToast('Account created successfully!', 'success');
         return { success: true, confirmationRequired: false };
       }
@@ -533,6 +548,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     setUser((prev) => ({ ...prev, id: '', email: '', name: '', isAuthenticated: false }));
     setIsDemoMode(false);
+    setJobs([]);
+    setSavedJobIds([]);
+    setApplications([]);
+    setNotifications([]);
     setActiveView('home');
     showToast('Logged out successfully.', 'info');
   };
