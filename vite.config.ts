@@ -8,7 +8,12 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss(), VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.png'],
+      includeAssets: [
+  'icon.png',
+  'icon-192.png',
+  'apple-touch-icon.png',
+  'favicon.png',
+],
       manifest: {
         id: '/',
         name: 'Agentic Jobs',
@@ -20,13 +25,25 @@ export default defineConfig(() => {
         start_url: '/',
         scope: '/',
         icons: [
-          {
-            src: '/icon.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable',
-          },
-        ],
+  {
+    src: '/icon-192.png',
+    sizes: '192x192',
+    type: 'image/png',
+    purpose: 'any',
+  },
+  {
+    src: '/icon.png',
+    sizes: '512x512',
+    type: 'image/png',
+    purpose: 'any',
+  },
+  {
+    src: '/icon.png',
+    sizes: '512x512',
+    type: 'image/png',
+    purpose: 'maskable',
+  },
+],
       },
       devOptions: {
         enabled: true,
