@@ -557,12 +557,16 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: 'custom',
     });
+
     app.use(vite.middlewares);
 
     app.use('*', async (req, res, next) => {
       const url = req.originalUrl;
+
       try {
-        let template = await vite.transformIndexHtml(url, `
+        const template = await vite.transformIndexHtml(
+          url,
+          `
 <!doctype html>
 <html lang="en" class="dark">
   <head>
@@ -575,7 +579,9 @@ async function startServer() {
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-        `);
+          `
+        );
+
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
       } catch (e: any) {
         vite.ssrFixStacktrace(e);
@@ -583,9 +589,28 @@ async function startServer() {
       }
     });
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    // server-dist/server.js and root dist/ are sibling directories.
+    // Resolve the frontend build from the parent of server-dist.
+    const clientDistPath = path.resolve(__dirname, '..', 'dist');
+
+    // Serve production assets such as JS, CSS, icons and the web manifest.
+    app.use(express.static(clientDistPath));
+
+    // Serve React's entry point for frontend routes.
+    app.get('*', (req, res, next) => {
+      // Do not turn unknown API endpoints into the React HTML page.
+      if (req.path.startsWith('/api/')) {
+        return next();
+      }
+
+      res.sendFile(
+        path.join(clientDistPath, 'index.html'),
+        (err) => {
+          if (err) {
+            next(err);
+          }
+        }
+      );
     });
   }
 
