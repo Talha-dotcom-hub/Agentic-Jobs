@@ -8,7 +8,7 @@
 # Proxy /api routes to the production backend server or container
 [[redirects]]
   from = "/api/*"
-  to = "https://agentic-jobs-api.example.com/api/:splat"
+  to = "https://agentic-jobs-api.onrender.com/api/:splat"
   status = 200
   force = false
 
