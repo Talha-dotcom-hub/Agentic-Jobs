@@ -129,21 +129,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const setActiveView = useCallback((view: ActiveView) => {
     if (activeViewRef.current === view) return;
 
+    const url = new URL(window.location.href);
+    if (view === 'home' || view === 'login' || view === 'signup' || view === 'forgot' || view === 'features' || view === 'about' || view === 'faq' || view === 'contact' || view === 'privacy' || view === 'cookie' || view === 'terms' || view === 'accessibility') {
+      url.searchParams.delete('view');
+    } else {
+      // Keep the selected app tab in the URL so reloads and shared deep links
+      // return to the same screen instead of silently falling back to Home.
+      url.searchParams.set('view', view);
+    }
+    const state = { ...(window.history.state || {}), agenticJobsView: view };
     if (view === 'home') {
       viewHistoryRef.current = ['home'];
-      window.history.replaceState({ agenticJobsView: view }, '');
-    } else if (
-      view === 'dashboard' &&
-      (activeViewRef.current === 'login' || activeViewRef.current === 'signup')
-    ) {
-      viewHistoryRef.current = ['home', 'dashboard'];
-      window.history.replaceState({ agenticJobsView: 'home' }, '');
-      window.history.pushState({ agenticJobsView: view }, '');
+      window.history.replaceState(state, '', url);
     } else {
       viewHistoryRef.current.push(view);
-      window.history.pushState({ agenticJobsView: view }, '');
+      window.history.pushState(state, '', url);
     }
-
     activeViewRef.current = view;
     setActiveViewState(view);
   }, []);
@@ -283,6 +284,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, []);
 
+  // Reconnect an already-authorized push subscription after login/reload.
+  // Browsers require an explicit user gesture for the first permission request;
+  // this only reuses a permission the user has already granted.
+  useEffect(() => {
+    if (!user.isAuthenticated || !user.id || isDemoMode || typeof window === 'undefined') return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const registration = await navigator.serviceWorker?.register('/sw.js', { scope: '/' });
+        if (!registration || cancelled || !('PushManager' in window)) return;
+        const existing = await registration.pushManager.getSubscription();
+        if (!existing && !cancelled) await subscribeUserToWebPush(user.id);
+      } catch (error) {
+        console.warn('Push subscription restore skipped:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user.id, user.isAuthenticated, isDemoMode]);
+
   // Restore Persistent Resume Memory from Server/Supabase
   useEffect(() => {
     let cancelled = false;
@@ -352,6 +373,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setApplications([]);
         setNotifications([]);
         setSources([]);
+        const requestedView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
+        const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings'];
+        if (!requestedView || !appViews.includes(requestedView)) {
+          activeViewRef.current = 'dashboard';
+          setActiveViewState('dashboard');
+          const url = new URL(window.location.href);
+          url.searchParams.set('view', 'dashboard');
+          window.history.replaceState({ ...(window.history.state || {}), agenticJobsView: 'dashboard' }, '', url);
+          viewHistoryRef.current = ['dashboard'];
+        }
       }
     });
 
@@ -371,7 +402,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setNotifications([]);
         setSources([]);
         if (window.location.pathname !== '/reset-password' && !window.location.hash.includes('type=recovery')) {
-          setActiveView('resume');
+          const requestedView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
+          const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings'];
+          setActiveView(requestedView && appViews.includes(requestedView) ? requestedView : 'dashboard');
         }
       } else if (event === 'PASSWORD_RECOVERY') {
         setActiveView('reset-password');
@@ -496,7 +529,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setIsDemoMode(false);
-    setActiveView('resume');
+    setActiveView('dashboard');
     showToast(`Welcome back, ${name || email}!`, 'success');
   };
 
@@ -533,7 +566,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           preferences: user.preferences,
         });
         setIsDemoMode(false);
-        setActiveView('resume');
+        setActiveView('dashboard');
         showToast('Account created successfully!', 'success');
         return { success: true, confirmationRequired: false };
       }

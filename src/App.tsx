@@ -32,7 +32,39 @@ import { Settings } from './pages/app/Settings';
 import { CookieBanner } from './components/common/CookieBanner';
 import { NotFound } from './pages/public/NotFound';
 
-import { Sparkles, Lock, ArrowRight } from 'lucide-react';
+import { Sparkles, Lock, ArrowRight, LayoutDashboard, Compass, Clock3, FileText, Bookmark, Briefcase, Bell } from 'lucide-react';
+
+const MobileBottomNav: React.FC = () => {
+  const { activeView, setActiveView, notifications, savedJobIds } = useApp();
+  const items = [
+    { view: 'dashboard' as const, label: 'Home', icon: LayoutDashboard },
+    { view: 'discover' as const, label: 'Discover', icon: Compass },
+    { view: 'saved' as const, label: 'Saved', icon: Bookmark, badge: savedJobIds.length },
+    { view: 'resume' as const, label: 'Resume', icon: FileText },
+    { view: 'schedule' as const, label: 'Schedule', icon: Clock3 },
+  ];
+  const unread = notifications.filter((n) => !n.read).length;
+  return (
+    <nav aria-label="Main navigation" className="mobile-bottom-nav lg:hidden">
+      {items.map(({ view, label, icon: Icon, badge }) => (
+        <button key={view} type="button" onClick={() => setActiveView(view)}
+          aria-current={activeView === view ? 'page' : undefined}
+          className={`mobile-nav-item ${activeView === view ? 'is-active' : ''}`}>
+          <span className="mobile-nav-icon-wrap"><Icon size={19} strokeWidth={activeView === view ? 2.4 : 1.8} />
+            {((badge || 0) > 0) && <span className="mobile-nav-badge">{badge}</span>}
+          </span>
+          <span>{label}</span>
+        </button>
+      ))}
+      <button type="button" onClick={() => setActiveView('notifications')}
+        aria-current={activeView === 'notifications' ? 'page' : undefined}
+        className={`mobile-nav-item ${activeView === 'notifications' ? 'is-active' : ''}`}>
+        <span className="mobile-nav-icon-wrap"><Bell size={19} />{unread > 0 && <span className="mobile-nav-badge">{unread}</span>}</span>
+        <span>Alerts</span>
+      </button>
+    </nav>
+  );
+};
 
 const MainContent: React.FC = () => {
   const { activeView, setActiveView, user, isDemoMode, enterDemoMode, exitDemoMode } = useApp();
@@ -54,6 +86,27 @@ const MainContent: React.FC = () => {
   ];
 
   const isPublicView = publicViews.includes(activeView);
+
+  // Progressive reveal on content cards, with reduced-motion accessibility support.
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return;
+    const root = document.querySelector('.app-main');
+    if (!root) return;
+    const targets = Array.from(root.querySelectorAll<HTMLElement>(
+      'section, article, .card-hover-effect, [data-reveal]'
+    ));
+    targets.forEach((el) => el.classList.add('reveal-on-scroll'));
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-revealed');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+    targets.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [activeView]);
 
   const renderView = () => {
     // Protected View Route Guard
@@ -164,11 +217,12 @@ const MainContent: React.FC = () => {
       ) : (
         <div className="flex-1 max-w-7xl w-full mx-auto flex">
           <Sidebar />
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">{renderView()}</main>
+          <main className="app-main flex-1 p-4 sm:p-6 lg:p-8 min-w-0">{renderView()}</main>
         </div>
       )}
 
       <Footer />
+      {(!isPublicView && (user.isAuthenticated || isDemoMode)) && <MobileBottomNav />}
       <ToastContainer />
       <CookieBanner />
     </div>
