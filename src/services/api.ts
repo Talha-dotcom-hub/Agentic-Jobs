@@ -11,11 +11,44 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
       if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`;
       }
-    } catch {
-      // Fallback silently if session lookup fails
+    } catch (error) {
+      throw new Error(error instanceof Error ? `Could not read the authenticated session: ${error.message}` : 'Could not read the authenticated session.');
     }
   }
   return headers;
+}
+
+export interface ProfileSettings {
+  id: string;
+  email: string;
+  fullName: string;
+  preferences: {
+    pushNotifications: boolean;
+    highMatchAlerts: boolean;
+    emailSummaries: boolean;
+    autoSaveHighMatches: boolean;
+  };
+}
+
+export async function fetchProfileSettingsApi(): Promise<ProfileSettings> {
+  const res = await fetch('/api/settings/profile', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Profile settings load failed (${res.status}).`);
+  return body as ProfileSettings;
+}
+
+export async function saveProfileSettingsApi(
+  fullName: string,
+  preferences: ProfileSettings['preferences'],
+): Promise<ProfileSettings> {
+  const res = await fetch('/api/settings/profile', {
+    method: 'PUT',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ fullName, preferences }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Profile settings save failed (${res.status}).`);
+  return body as ProfileSettings;
 }
 
 export interface GeminiKeyStatus {
@@ -218,9 +251,9 @@ export async function fetchResumeApi(_userId?: string): Promise<Resume | null> {
   };
 }
 
-export async function saveResumeApi(resumeText: string, name?: string, _userId?: string): Promise<Resume> {
+export async function saveResumeApi(resumeText: string, name?: string, _userId?: string, storagePath?: string): Promise<Resume> {
   const res = await fetch('/api/resume', {
-    method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ text: resumeText, name }),
+    method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ text: resumeText, name, storagePath }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Failed to save resume (${res.status}).`);

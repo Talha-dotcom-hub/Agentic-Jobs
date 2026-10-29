@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getGeminiKeyStatus, saveGeminiApiKey, deleteGeminiApiKey, deleteAccountApi } from '../../services/api';
-import type { GeminiKeyStatus } from '../../services/api';
+import {
+  getGeminiKeyStatus,
+  saveGeminiApiKey,
+  deleteGeminiApiKey,
+  deleteAccountApi,
+  fetchProfileSettingsApi,
+  saveProfileSettingsApi,
+} from '../../services/api';
+import type { GeminiKeyStatus, ProfileSettings } from '../../services/api';
+import { canSaveProfileSettings } from '../../services/profileSettingsState';
 import {
   Settings as SettingsIcon,
   User,
@@ -21,14 +29,73 @@ export const Settings: React.FC = () => {
   const [geminiKey, setGeminiKey] = useState('');
   const [geminiKeyStatus, setGeminiKeyStatus] = useState<GeminiKeyStatus | null>(null);
   const [geminiKeyBusy, setGeminiKeyBusy] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileLoadedForUser, setProfileLoadedForUser] = useState<string | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
+  const [preferences, setPreferences] = useState<ProfileSettings['preferences']>(user.preferences);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [accountDeleteBusy, setAccountDeleteBusy] = useState(false);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  useEffect(() => {
+    let active = true;
+    if (!user.isAuthenticated || isDemoMode) {
+      setProfileLoadedForUser(null);
+      setProfileLoadError(null);
+      return () => { active = false; };
+    }
+    setProfileLoadedForUser(null);
+    setProfileLoadError(null);
+    void (async () => {
+      try {
+        const settings = await fetchProfileSettingsApi();
+        if (!active) return;
+        setName(settings.fullName);
+        setEmail(settings.email);
+        setPreferences(settings.preferences);
+        setUser((previous) => ({
+          ...previous,
+          name: settings.fullName,
+          email: settings.email,
+          preferences: settings.preferences,
+        }));
+        setProfileLoadedForUser(user.id);
+      } catch (error: unknown) {
+        if (active) {
+          setProfileLoadError(error instanceof Error ? error.message : 'Could not load saved profile settings.');
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [user.id, user.isAuthenticated, isDemoMode, setUser, profileLoadAttempt]);
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setUser((prev) => ({ ...prev, name, email }));
-    showToast('Profile preferences saved in this session.', 'success');
+    if (profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)) return;
+    if (isDemoMode) {
+      setUser((prev) => ({ ...prev, name, preferences }));
+      showToast('Demo profile preferences updated locally.', 'info');
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const saved = await saveProfileSettingsApi(name, preferences);
+      setName(saved.fullName);
+      setEmail(saved.email);
+      setPreferences(saved.preferences);
+      setUser((prev) => ({
+        ...prev,
+        name: saved.fullName,
+        email: saved.email,
+        preferences: saved.preferences,
+      }));
+      showToast('Profile settings saved to your account.', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Profile settings could not be saved. Your previous saved values remain active.', 'error');
+    } finally {
+      setProfileSaving(false);
+    }
   };
   const refreshGeminiKeyStatus = async () => {
     try {
@@ -122,6 +189,18 @@ export const Settings: React.FC = () => {
 
       {/* Account Form */}
       <form onSubmit={handleSaveProfile} className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-6 text-xs">
+        {profileLoadError && !isDemoMode && user.isAuthenticated && (
+          <div role="alert" className="flex items-center justify-between gap-4 rounded-xl border border-rose-800/70 bg-rose-950/30 p-3 text-rose-200">
+            <span>Saved profile settings could not be loaded: {profileLoadError} Your saved values have not been changed.</span>
+            <button
+              type="button"
+              onClick={() => setProfileLoadAttempt((attempt) => attempt + 1)}
+              className="shrink-0 rounded-lg border border-rose-700 px-3 py-1.5 font-semibold hover:bg-rose-900/40"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         <div className="space-y-4">
           <h3 className="font-bold text-white flex items-center gap-2 text-sm">
             <User className="w-4 h-4 text-cyan-400" />
@@ -135,6 +214,7 @@ export const Settings: React.FC = () => {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
               />
             </div>
@@ -144,10 +224,39 @@ export const Settings: React.FC = () => {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                readOnly
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
               />
+              <p className="mt-1 text-[10px] text-slate-500">Email is managed by your sign-in provider and cannot be changed here.</p>
             </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 pt-4 border-t border-slate-800">
+          <h3 className="font-bold text-white text-sm">Discovery &amp; Notification Preferences</h3>
+          <PreferenceToggle
+            label="High-match alerts"
+            description="Create an in-app alert for newly discovered qualifying matches."
+            checked={preferences.highMatchAlerts}
+            disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
+            onChange={(value) => setPreferences((current) => ({ ...current, highMatchAlerts: value }))}
+          />
+          <PreferenceToggle
+            label="Automatically save high matches"
+            description="Save qualifying matches to your saved jobs when a scan completes."
+            checked={preferences.autoSaveHighMatches}
+            disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
+            onChange={(value) => setPreferences((current) => ({ ...current, autoSaveHighMatches: value }))}
+          />
+          <PreferenceToggle
+            label="Push notifications"
+            description="Deliver browser notifications for alerts when a registered subscription is available."
+            checked={preferences.pushNotifications}
+            disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
+            onChange={(value) => setPreferences((current) => ({ ...current, pushNotifications: value }))}
+          />
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-[11px] text-slate-500">
+            Email summaries are not available because no email-delivery provider is configured.
           </div>
         </div>
 
@@ -204,9 +313,10 @@ export const Settings: React.FC = () => {
         </div><div className="pt-2 flex justify-end">
           <button
             type="submit"
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-semibold shadow-md shadow-violet-600/20 transition-all"
+            disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-semibold shadow-md shadow-violet-600/20 transition-all disabled:opacity-50"
           >
-            Save Preferences
+            {profileSaving ? 'Saving...' : 'Save Preferences'}
           </button>
         </div>
       </form>
@@ -277,3 +387,25 @@ export const Settings: React.FC = () => {
     </div>
   );
 };
+
+const PreferenceToggle: React.FC<{
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (value: boolean) => void;
+}> = ({ label, description, checked, disabled, onChange }) => (
+  <label className={`flex items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3 ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+    <span>
+      <span className="block text-slate-200 font-semibold">{label}</span>
+      <span className="block mt-0.5 text-[10px] text-slate-500">{description}</span>
+    </span>
+    <input
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.checked)}
+      className="h-4 w-4 accent-violet-500"
+    />
+  </label>
+);

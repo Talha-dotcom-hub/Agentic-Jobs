@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 let workerInterval: NodeJS.Timeout | null = null;
 const LOCK_STALE_AFTER_MS = 15 * 60 * 1000;
 const DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000;
+const MAX_MANUAL_SCAN_ATTEMPTS = 3;
 
 export interface SchedulerState {
   enabled: boolean;
@@ -103,21 +104,47 @@ async function releaseSchedule(
   if (error) throw new Error(`Could not persist scan schedule result: ${error.message}`);
 }
 
+export async function recoverStaleManualScans(supabaseClient: any): Promise<void> {
+  const abandonedCutoff = new Date().toISOString();
+  const { error: recoverError } = await supabaseClient.from('scan_runs')
+    .update({
+      status: 'queued',
+      started_at: null,
+      lease_expires_at: null,
+      available_at: abandonedCutoff,
+      updated_at: abandonedCutoff,
+      error_message: 'Requeued after an interrupted worker run.',
+    })
+    .eq('status', 'running')
+    .or(`lease_expires_at.is.null,lease_expires_at.lt.${abandonedCutoff}`)
+    .lt('attempt_count', MAX_MANUAL_SCAN_ATTEMPTS);
+  if (recoverError) console.warn('Could not recover stale manual scan runs:', recoverError.message);
+
+  const { error: exhaustedRecoveryError } = await supabaseClient.from('scan_runs')
+    .update({
+      status: 'failed',
+      lease_expires_at: null,
+      completed_at: abandonedCutoff,
+      error_message: 'Scan worker lease expired after the retry limit was reached.',
+      updated_at: abandonedCutoff,
+    })
+    .eq('status', 'running')
+    .or(`lease_expires_at.is.null,lease_expires_at.lt.${abandonedCutoff}`)
+    .gte('attempt_count', MAX_MANUAL_SCAN_ATTEMPTS);
+  if (exhaustedRecoveryError) console.warn('Could not close exhausted interrupted scan runs:', exhaustedRecoveryError.message);
+}
+
 async function processQueuedManualScans(supabaseClient: any): Promise<number> {
   let processed = 0;
   // Requeue only abandoned manual runs. This recovers jobs after a backend process restart
   // instead of leaving them in 'running' forever. The schedule lock is also independently stale-checked.
-  const abandonedCutoff = staleLockCutoff();
-  const { error: recoverError } = await supabaseClient.from('scan_runs')
-    .update({ status: 'queued', started_at: null, updated_at: new Date().toISOString(), error_message: 'Requeued after an interrupted worker run.' })
-    .eq('status', 'running')
-    .lt('started_at', abandonedCutoff);
-  if (recoverError) console.warn('Could not recover stale manual scan runs:', recoverError.message);
-
+  await recoverStaleManualScans(supabaseClient);
+  const availableCutoff = new Date().toISOString();
   const { data: queued, error: queueError } = await supabaseClient
     .from('scan_runs')
-    .select('id,user_id,created_at')
+    .select('id,user_id,created_at,attempt_count,max_attempts')
     .eq('status', 'queued')
+    .lte('available_at', availableCutoff)
     .order('created_at', { ascending: true })
     .limit(5);
   if (queueError) {
@@ -128,12 +155,20 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
 
   for (const run of queued || []) {
     const nowIso = new Date().toISOString();
+    const attemptCount = Number(run.attempt_count || 0) + 1;
     const { data: claimedRun, error: claimRunError } = await supabaseClient
       .from('scan_runs')
-      .update({ status: 'running', started_at: nowIso, updated_at: nowIso })
+      .update({
+        status: 'running',
+        started_at: nowIso,
+        lease_expires_at: new Date(Date.now() + LOCK_STALE_AFTER_MS).toISOString(),
+        attempt_count: attemptCount,
+        updated_at: nowIso,
+      })
       .eq('id', run.id)
       .eq('status', 'queued')
-      .select('id,user_id')
+      .lte('available_at', nowIso)
+      .select('id,user_id,attempt_count,max_attempts')
       .maybeSingle();
     if (claimRunError || !claimedRun) continue;
 
@@ -168,7 +203,14 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
       const claimedSchedule = await claimSchedule(supabaseClient, run.user_id);
       if (!claimedSchedule) {
         // Another scheduled/manual run owns the lock. Return this queue item to the queue for a later poll.
-        await supabaseClient.from('scan_runs').update({ status: 'queued', started_at: null, updated_at: new Date().toISOString() }).eq('id', run.id);
+        const retryAt = retryTime();
+        await supabaseClient.from('scan_runs').update({
+          status: 'queued',
+          started_at: null,
+          lease_expires_at: null,
+          available_at: retryAt,
+          updated_at: new Date().toISOString(),
+        }).eq('id', run.id);
         continue;
       }
       schedule = claimedSchedule;
@@ -188,12 +230,20 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
       };
       const result = await executeScheduledUserScan(config, supabaseClient);
       await releaseSchedule(supabaseClient, schedule, result);
-      const finalStatus = result.success ? 'completed' : 'failed';
+      const maxAttempts = Number(claimedRun.max_attempts || MAX_MANUAL_SCAN_ATTEMPTS);
+      const retrying = !result.success && attemptCount < maxAttempts;
+      const finalStatus = result.success ? 'completed' : retrying ? 'queued' : 'failed';
+      const completedAt = retrying ? null : new Date().toISOString();
       const { error: resultSaveError } = await supabaseClient.from('scan_runs').update({
         status: finalStatus,
         result,
         error_message: result.success ? null : (result.error || 'Scan failed.'),
-        completed_at: new Date().toISOString(),
+        started_at: retrying ? null : scanStartedAt,
+        lease_expires_at: null,
+        available_at: retrying
+          ? (Date.parse(result.nextScanTime) > Date.now() ? result.nextScanTime : retryTime())
+          : nowIso,
+        completed_at: completedAt,
         updated_at: new Date().toISOString(),
       }).eq('id', run.id).eq('user_id', run.user_id);
       if (resultSaveError) console.error('Could not persist manual scan result:', resultSaveError.message);
@@ -215,10 +265,15 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
           updated_at: new Date().toISOString(),
         }).eq('user_id', run.user_id);
       }
+      const maxAttempts = Number(claimedRun.max_attempts || MAX_MANUAL_SCAN_ATTEMPTS);
+      const retrying = attemptCount < maxAttempts;
       await supabaseClient.from('scan_runs').update({
-        status: 'failed',
+        status: retrying ? 'queued' : 'failed',
         error_message: errorMessage,
-        completed_at: new Date().toISOString(),
+        started_at: retrying ? null : scanStartedAt,
+        lease_expires_at: null,
+        available_at: retrying ? retryTime() : new Date().toISOString(),
+        completed_at: retrying ? null : new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', run.id).eq('user_id', run.user_id);
       processed++;
@@ -228,7 +283,7 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
 }
 
 /** Execute due scans and queued manual runs using durable per-user Supabase records only. */
-export async function processDueScans(
+async function processDueScansInternal(
   _getState?: () => SchedulerState,
   _updateState?: (patch: Partial<SchedulerState>) => void,
   supabaseClient?: any,
@@ -307,6 +362,22 @@ export async function processDueScans(
   }
 
   return { processedUsersCount };
+}
+
+let pollInProgress = false;
+
+export async function processDueScans(
+  getState?: () => SchedulerState,
+  updateState?: (patch: Partial<SchedulerState>) => void,
+  supabaseClient?: any,
+): Promise<{ processedUsersCount: number }> {
+  if (pollInProgress) return { processedUsersCount: 0 };
+  pollInProgress = true;
+  try {
+    return await processDueScansInternal(getState, updateState, supabaseClient);
+  } finally {
+    pollInProgress = false;
+  }
 }
 
 export function initSchedulerWorker(

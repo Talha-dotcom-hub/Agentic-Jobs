@@ -18,33 +18,33 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 export async function uploadResumeFile(userId: string, file: File) {
   if (!isSupabaseConfigured) {
-    return { path: `resumes/${userId}/${file.name}`, error: null };
+    throw new Error('Supabase must be configured before uploading a resume.');
   }
 
-  // Enforce size limit (max 5MB)
+  if (!userId || file.size === 0) throw new Error('A signed-in account and non-empty resume file are required.');
   if (file.size > 5 * 1024 * 1024) {
     throw new Error('File size exceeds maximum permitted limit of 5MB.');
   }
 
-  // Allowed MIME types
-  const allowedTypes = [
-    'application/pdf',
-    'text/plain',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/markdown',
-  ];
-  if (!allowedTypes.includes(file.type) && !file.name.endsWith('.txt') && !file.name.endsWith('.pdf')) {
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  const allowedExtensions = new Set(['pdf', 'docx', 'txt', 'md']);
+  const allowedTypes: Record<string, string[]> = {
+    pdf: ['application/pdf'],
+    docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    txt: ['text/plain', 'application/octet-stream', ''],
+    md: ['text/markdown', 'text/plain', 'application/octet-stream', ''],
+  };
+  if (!allowedExtensions.has(extension) || !allowedTypes[extension].includes(file.type)) {
     throw new Error('Invalid file format. Permitted formats: PDF, TXT, DOCX, MD.');
   }
 
-  const fileExt = file.name.split('.').pop();
-  const filePath = `${userId}/${Date.now()}_resume.${fileExt}`;
+  const filePath = `${userId}/${Date.now()}_resume.${extension}`;
 
   const { data, error } = await supabase.storage
     .from('resumes')
     .upload(filePath, file, {
       cacheControl: '3600',
-      upsert: true,
+      upsert: false,
     });
 
   if (error) throw error;

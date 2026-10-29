@@ -904,11 +904,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
     if (!user.isAuthenticated || !user.id) throw new Error('Sign in before saving a resume.');
+    let storagePath: string | undefined;
     if (file) {
       if (!isSupabaseConfigured) throw new Error('Supabase must be configured to upload a resume file securely.');
-      await uploadResumeFile(user.id, file);
+      const upload = await uploadResumeFile(user.id, file);
+      storagePath = upload.path;
     }
-    const updated = await saveResumeApi(text, name || file?.name, user.id);
+    const updated = await saveResumeApi(text, name || file?.name, user.id, storagePath);
     setResume(updated);
     showToast('Resume text and structured profile saved to your account.', 'success');
   };

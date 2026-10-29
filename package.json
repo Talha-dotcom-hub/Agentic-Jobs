@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --target=node20 --format=esm --outdir=server-dist --packages=external",
-    "start": "NODE_ENV=production node server-dist/server.js",
+    "build": "vite build && esbuild server.ts worker.ts --bundle --platform=node --target=node20 --format=esm --outdir=server-dist --packages=external",
+    "start": "node -e \"process.env.NODE_ENV='production'; import('./server-dist/server.js')\"",
+    "worker": "node -e \"process.env.NODE_ENV='production'; import('./server-dist/worker.js')\"",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true }); fs.rmSync('server-dist', { recursive: true, force: true });\"",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

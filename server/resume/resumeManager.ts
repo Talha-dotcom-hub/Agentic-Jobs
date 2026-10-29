@@ -47,6 +47,7 @@ export interface StoredResumeRecord {
   userId: string;
   text: string;
   name: string;
+  storagePath?: string;
   lastUpdated: string;
   extractedSkills: string[];
   parsedRole: string;
@@ -356,6 +357,7 @@ export async function getPersistedResume(userId: string, supabaseClient?: any): 
         userId: data.user_id,
         text: data.content_text || '',
         name: data.file_name || 'Resume',
+        storagePath: data.storage_path || undefined,
         lastUpdated: data.updated_at || new Date().toISOString(),
         extractedSkills: Array.isArray(data.extracted_skills) ? data.extracted_skills : [],
         parsedRole: data.structured_profile?.headline || '',
@@ -377,12 +379,14 @@ export async function savePersistedResume(
 ): Promise<StoredResumeRecord> {
   if (!record.userId || !record.text.trim()) throw new Error('A user identity and non-empty resume text are required.');
   if (supabaseClient) {
+    const previous = await getPersistedResume(record.userId, supabaseClient);
     const { error: resumeError } = await supabaseClient
       .from('resumes')
       .upsert({
         user_id: record.userId,
         content_text: record.text,
         file_name: record.name,
+        storage_path: record.storagePath || null,
         extracted_skills: record.extractedSkills,
         structured_profile: record.profile,
         profile_version: record.profileVersion,
@@ -410,8 +414,27 @@ export async function savePersistedResume(
         extracted_at: record.lastUpdated,
         updated_at: record.lastUpdated,
       }, { onConflict: 'user_id' });
-    if (profileError) throw new Error(`Resume saved, but structured profile sync failed: ${profileError.message}`);
-    return record;
+      if (profileError) {
+        const { error: rollbackError } = previous
+          ? await supabaseClient.from('resumes').upsert({
+            user_id: previous.userId,
+            content_text: previous.text,
+            file_name: previous.name,
+            storage_path: previous.storagePath || null,
+            extracted_skills: previous.extractedSkills,
+            structured_profile: previous.profile,
+            profile_version: previous.profileVersion,
+            extraction_status: previous.extractionStatus,
+            extraction_error: previous.extractionError || null,
+            updated_at: previous.lastUpdated,
+          }, { onConflict: 'user_id' })
+          : await supabaseClient.from('resumes').delete().eq('user_id', record.userId);
+        if (rollbackError) {
+          throw new Error(`Resume profile sync failed (${profileError.message}) and the resume rollback also failed (${rollbackError.message}).`);
+        }
+        throw new Error(`Resume profile sync failed; the previous resume was restored. ${profileError.message}`);
+      }
+      return record;
   }
 
   if (!LOCAL_RESUME_STORAGE_ENABLED) {
@@ -423,6 +446,48 @@ export async function savePersistedResume(
   const check = readLocalStore()[record.userId];
   if (!check || check.text !== record.text) throw new Error('Local resume store could not confirm the saved record.');
   return record;
+}
+
+export function isOwnedResumeStoragePath(userId: string, storagePath: string): boolean {
+  if (!userId || !storagePath) return false;
+  const [ownerId, fileName, ...extra] = storagePath.split('/');
+  return ownerId === userId &&
+    extra.length === 0 &&
+    /^\d+_resume\.(pdf|docx|txt|md)$/i.test(fileName || '');
+}
+
+export async function verifyResumeStorageObject(
+  userId: string,
+  storagePath: string,
+  supabaseClient?: any,
+): Promise<void> {
+  if (!isOwnedResumeStoragePath(userId, storagePath)) {
+    throw new Error('Resume storage path is invalid or does not belong to this account.');
+  }
+  if (!supabaseClient) throw new Error('Supabase storage is not configured.');
+
+  const fileName = storagePath.split('/')[1];
+  const { data, error } = await supabaseClient.storage
+    .from('resumes')
+    .list(userId, { search: fileName, limit: 10 });
+  if (error) throw new Error(`Could not verify the uploaded resume file: ${error.message}`);
+  if (!Array.isArray(data) || !data.some((item: any) => item?.name === fileName)) {
+    throw new Error('The uploaded resume file was not found in private storage.');
+  }
+}
+
+export async function removeResumeStorageObject(
+  userId: string,
+  storagePath: string | undefined,
+  supabaseClient?: any,
+): Promise<string | null> {
+  if (!storagePath) return null;
+  if (!isOwnedResumeStoragePath(userId, storagePath)) {
+    throw new Error('Refusing to remove a resume file outside this account storage path.');
+  }
+  if (!supabaseClient) return 'Supabase storage is unavailable; the uploaded file could not be removed.';
+  const { error } = await supabaseClient.storage.from('resumes').remove([storagePath]);
+  return error ? 'The resume record was updated, but its previous file could not be removed.' : null;
 }
 
 export async function deletePersistedResume(userId: string, supabaseClient?: any): Promise<boolean> {

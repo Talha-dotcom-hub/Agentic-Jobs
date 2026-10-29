@@ -30,40 +30,32 @@ VAPID_SUBJECT="mailto:support@agenticjobs.dev"
 
 ## 2. Background Scheduler Architecture
 
-Server-side job discovery is managed by the `scanEngine` (`server/scheduler/scanEngine.ts`).
+Server-side job discovery is managed by `scanEngine` (`server/scheduler/scanEngine.ts`) and the Supabase-backed worker (`server/scheduler/schedulerWorker.ts`).
 
 ### Key Features
 1. **User-Configurable Intervals**:
    - **Hourly**: 1 through 24 hours
    - **Daily**: 1 through 5 days
-2. **Atomic Scan Lock (`activeLocks`)**: Prevents duplicate concurrent scans for the same user.
+2. **Durable queue and leases**: Manual scans are atomically enqueued per user in Supabase; the worker claims jobs, records leases, retries failures up to a bounded attempt count, and recovers expired leases after restarts.
 3. **Shared Source Request Pooling**: Reuses normalized multi-source search query results to prevent duplicate external API requests.
-4. **Gemini AI Match Scoring**: Evaluates candidate fit and dispatches Web Push alerts for high-scoring matches (>85%).
+4. **Gemini AI Match Scoring**: Evaluates candidate fit and applies persisted per-user alert, auto-save, and push preferences.
 
----
+The API process runs the worker loop by default to preserve the existing deployment shape. For a separate persistent Render Background Worker:
 
-## 3. Production Deployment with Supabase pg_cron
+- Web service: build with `npm install && npm run build`, start with `npm start`, and set `RUN_SCHEDULER_WORKER=false`.
+- Background Worker service: use the same build command and start with `npm run worker`.
+- Worker secrets: `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`). Add Gemini and Web Push variables only when those features are enabled.
+- The source connectors read `APIFY_API_TOKEN` (also accepts `APIFY_KEY`) and `RAPIDAPI_KEY` (also accepts `RAPID_API`). RapidAPI also needs the correct product `RAPIDAPI_HOST` and `RAPIDAPI_SEARCH_PATH`.
+- Third-party source calls remain disabled unless `ENABLE_APPROVED_THIRD_PARTY_JOB_CONNECTORS=true`; enable only after confirming the provider terms, account subscription, and usage limits.
 
-In production, apply `supabase/migrations/002_scheduler_and_push.sql` to enable `pg_cron` and `pg_net`:
-
-```sql
-SELECT cron.schedule(
-  'agentic-jobs-background-scan',
-  '0 * * * *', -- Runs hourly at minute 0
-  $$
-  SELECT net.http_post(
-    url := 'https://your-applet-url/api/scan/run-due',
-    headers := '{"Content-Type": "application/json"}'::jsonb
-  );
-  $$
-);
-```
+No Render service declaration is checked into this repository; deployment must be verified in the Render dashboard. If using the HTTP cron endpoint instead of a continuously running worker, send `Authorization: Bearer <CRON_SECRET>` or `X-Cron-Secret: <CRON_SECRET>`; the secret in a request body is not accepted.
 
 ---
 
 ## 4. Notification Categories & Preferences
 
-Users can toggle notifications in **Settings**:
-- **New High-Match Jobs**: Dispatches alerts when an opportunity scores >85%.
-- **Application Follow-Up Reminders**: Triggers when an application stays in `Applied` status for >5 days.
-- **Source Failures & System Alerts**: Notifies users if a source connector rate-limits or fails.
+Users can save preferences in **Settings**:
+- **High-match alerts**: Controls in-app alerts for qualifying scores (>85%).
+- **Automatically save high matches**: Persists qualifying jobs in the user's saved-jobs list.
+- **Push notifications**: Controls browser push dispatch after a subscription has been registered.
+- **Email summaries**: Not available; no email-delivery provider is configured.

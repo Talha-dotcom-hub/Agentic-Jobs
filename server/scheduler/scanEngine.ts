@@ -8,6 +8,7 @@ import { generateWithGeminiFallback } from '../ai/geminiFallback.js';
 import { getUserGeminiApiKey } from '../credentials/geminiCredentialVault.js';
 import { getJobSourceLinks, getStableJobIdentity, mergeJobSourceLinks } from '../sources/jobIdentity.js';
 import { isQualifyingMatchScore } from '../../shared/matchThreshold.js';
+import { getScanPreferences } from '../settings/profileSettings.js';
 
 export interface UserScanConfig {
   userId: string;
@@ -109,6 +110,8 @@ export async function executeScheduledUserScan(
       resumeText = persisted?.text?.trim() || '';
     }
     if (!resumeText) throw new Error('No saved resume exists for this user. Upload and save a resume before scanning.');
+
+    const preferences = await getScanPreferences(supabaseClient, config.userId);
 
     const keywords = deriveResumeSearchKeywords(resumeText);
     if (!keywords.trim()) throw new Error('The resume did not contain a recognizable role or supported skills for job discovery. Add a target role or relevant skills and try again.');
@@ -302,7 +305,36 @@ ${resumeText.slice(0, 3000)}
 
     // Notifications are persisted after the result rows, so the UI and push message reflect real state.
     let newlyNotifiedCandidates: typeof highMatchCandidates = [];
-    if (supabaseClient && highMatchCandidates.length > 0) {
+    if (supabaseClient && preferences.autoSaveHighMatches && highMatchCandidates.length > 0) {
+      const savedSnapshots = highMatchCandidates.map(({ job, score }) => ({
+        user_id: config.userId,
+        job_key: createHash('sha256').update(getStableJobIdentity(job)).digest('hex'),
+        job_snapshot: {
+          id: job.id,
+          title: job.title,
+          company: job.company,
+          companyLogo: job.companyLogo,
+          location: job.location,
+          source: job.source,
+          postedDate: job.postedDate,
+          matchScore: score,
+          salary: job.salary,
+          type: job.type || 'Not specified',
+          experienceLevel: job.experienceLevel || 'Not specified',
+          workplaceType: job.workplaceType || 'Not specified',
+          originalUrl: job.originalUrl,
+          description: job.description,
+          skillsRequired: job.skillsRequired,
+          verified: job.verified,
+          saved: true,
+        },
+      }));
+      const { error: saveMatchesError } = await supabaseClient.from('user_saved_jobs')
+        .upsert(savedSnapshots, { onConflict: 'user_id,job_key', ignoreDuplicates: true });
+      if (saveMatchesError) throw new Error(`Could not auto-save high-match jobs: ${saveMatchesError.message}`);
+    }
+
+    if (supabaseClient && preferences.highMatchAlerts && highMatchCandidates.length > 0) {
       const matchNotifications = highMatchCandidates.map(({ job, score, jobKey }) => ({
         user_id: config.userId,
         title: `High match opportunity found: ${score}%`,
@@ -323,7 +355,7 @@ ${resumeText.slice(0, 3000)}
         return candidate ? [candidate] : [];
       });
     }
-    for (const { job, score } of newlyNotifiedCandidates) {
+    for (const { job, score } of (preferences.pushNotifications ? newlyNotifiedCandidates : [])) {
       try {
         await sendPushNotificationToUser(config.userId, {
           title: `High match opportunity found: ${score}%`,
@@ -359,7 +391,7 @@ ${resumeText.slice(0, 3000)}
       if (notificationError) console.warn('Could not persist scan completion notification:', notificationError.message);
       shouldSendCompletionPush = Boolean(insertedCompletion?.length);
     }
-    if (shouldSendCompletionPush) {
+    if (shouldSendCompletionPush && preferences.pushNotifications) {
       try {
         await sendPushNotificationToUser(config.userId, completionNotification, supabaseClient);
       } catch (pushErr) {

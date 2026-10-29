@@ -53,6 +53,8 @@ import {
   deletePersistedResume,
   removeLocalResumeRecord,
   extractStructuredResumeProfile,
+  verifyResumeStorageObject,
+  removeResumeStorageObject,
   StoredResumeRecord,
 } from './server/resume/resumeManager';
 import { initSchedulerWorker, processDueScans } from './server/scheduler/schedulerWorker';
@@ -65,6 +67,8 @@ import {
 } from './server/middleware/auth';
 import { isQualifyingMatchScore } from './shared/matchThreshold';
 import { mergeJobSourceLinks } from './server/sources/jobIdentity';
+import { getUserProfileSettings, saveUserProfileSettings } from './server/settings/profileSettings';
+import { logSafeServerError, profileSettingsApiError, safeApiErrorMessage } from './server/middleware/safeErrors';
 
 const requireAuth = createAuthMiddleware(supabase);
 const requireCronAuth = createCronAuthMiddleware();
@@ -182,6 +186,38 @@ app.delete('/api/settings/gemini-key', requireAuth, async (req: AuthenticatedReq
   if (error) return res.status(503).json({ error: 'Could not remove the Gemini key. Check backend database configuration.' });
   return res.json({ configured: false, message: 'Gemini key removed.' });
 });
+
+app.get('/api/settings/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Authentication required.' });
+  if (!supabase) return res.status(503).json({ error: 'Profile settings storage is not configured.' });
+  try {
+    const settings = await getUserProfileSettings(supabase, userId);
+    if (!settings) return res.status(404).json({ error: 'No profile was found for this account.' });
+    return res.json(settings);
+  } catch (error: any) {
+    logSafeServerError('Profile settings read failed.', error);
+    return res.status(503).json({ error: safeApiErrorMessage(error, 'Could not load profile settings. Please try again.') });
+  }
+});
+
+app.put('/api/settings/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Authentication required.' });
+  if (!supabase) return res.status(503).json({ error: 'Profile settings storage is not configured.' });
+  try {
+    const settings = await saveUserProfileSettings(supabase, userId, {
+      fullName: req.body?.fullName,
+      preferences: req.body?.preferences,
+    });
+    return res.json(settings);
+  } catch (error: any) {
+    logSafeServerError('Profile settings update failed.', error);
+    const failure = profileSettingsApiError(error);
+    return res.status(failure.status).json({ error: failure.message });
+  }
+});
+
 // Web Push VAPID Public Key Endpoint
 app.get('/api/push/vapid-key', (req, res) => {
   const publicKey = getVapidPublicKey();
@@ -631,17 +667,19 @@ app.post('/api/scan/trigger', requireAuth, scanRateLimiter, async (req: Authenti
   try {
     const resume = await getPersistedResume(userId, supabase);
     if (!resume?.text?.trim()) return res.status(400).json({ error: 'Upload and save your resume before running a scan.' });
-    const { data: active, error: activeError } = await supabase.from('scan_runs')
-      .select('id,status').eq('user_id', userId).in('status', ['queued', 'running']).order('created_at', { ascending: false }).limit(1);
-    if (activeError) throw activeError;
-    if (active?.[0]) return res.status(202).json({ success: true, runId: active[0].id, status: active[0].status, message: 'An existing scan is already queued or running.' });
-    const { data, error } = await supabase.from('scan_runs').insert({ user_id: userId, status: 'queued' })
-      .select('id,status').single();
+    const { data, error } = await supabase.rpc('enqueue_scan_run', { p_user_id: userId });
     if (error) throw error;
-    return res.status(202).json({ success: true, runId: data.id, status: data.status, message: 'Scan queued for the backend worker.' });
+    const run = Array.isArray(data) ? data[0] : data;
+    if (!run?.run_id || !run?.run_status) throw new Error('Scan queue did not return a run identifier and status.');
+    return res.status(202).json({
+      success: true,
+      runId: run.run_id,
+      status: run.run_status,
+      message: run.run_status === 'queued' ? 'Scan queued for the backend worker.' : 'An existing scan is already queued or running.',
+    });
   } catch (error: any) {
     console.error('Unable to queue scan:', error?.message || error);
-    return res.status(503).json({ error: 'Could not queue the scan. Confirm migration 006 and backend worker health.' });
+    return res.status(503).json({ error: 'Could not queue the scan. Apply the durable scan queue migration and confirm backend worker health.' });
   }
 });
 
@@ -747,23 +785,28 @@ app.get('/api/resume', requireAuth, async (req: AuthenticatedRequest, res) => {
     const record = await getPersistedResume(userId, supabase);
     res.json(record);
   } catch (err: any) {
-    console.error('Resume read failed:', err?.message || err);
-    res.status(503).json({ error: 'Could not load the saved resume from persistent storage.' });
+    logSafeServerError('Resume read failed.', err);
+    res.status(503).json({ error: safeApiErrorMessage(err, 'Could not load the saved resume from persistent storage. Please try again.') });
   }
 });
 
 app.post('/api/resume', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const submittedStoragePath = typeof req.body?.storagePath === 'string' ? req.body.storagePath.trim() : '';
+  let existing: StoredResumeRecord | null = null;
   try {
-    const userId = req.user!.id;
+    if (!userId) return res.status(401).json({ error: 'Authentication required.' });
     const { text, name } = req.body || {};
     if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'Resume text is required.' });
     if (text.length > 200000) return res.status(413).json({ error: 'Resume text exceeds the 200 KB text limit.' });
     if (name !== undefined && (typeof name !== 'string' || name.length > 255)) return res.status(400).json({ error: 'Resume name must be a string of at most 255 characters.' });
 
-    const existing = await getPersistedResume(userId, supabase);
+    existing = await getPersistedResume(userId, supabase);
+    if (submittedStoragePath) await verifyResumeStorageObject(userId, submittedStoragePath, supabase);
     let userGeminiKey: string | null = null;
     if (req.user?.id && supabase) {
-      try { userGeminiKey = await getUserGeminiApiKey(req.user.id, supabase); } catch (keyError: any) { console.warn('User Gemini key unavailable during resume extraction:', keyError?.message || keyError); }
+      try { userGeminiKey = await getUserGeminiApiKey(req.user.id, supabase); }
+      catch (keyError) { logSafeServerError('User Gemini key unavailable during resume extraction.', keyError); }
     }
     const extraction = await extractStructuredResumeProfile(text, name, userGeminiKey || effectiveGeminiKeyForSharedMode() || undefined);
 
@@ -771,6 +814,7 @@ app.post('/api/resume', requireAuth, async (req: AuthenticatedRequest, res) => {
       userId,
       text,
       name: (typeof name === 'string' && name.trim()) ? name.trim() : (existing?.name || 'Resume'),
+      storagePath: submittedStoragePath || undefined,
       lastUpdated: new Date().toISOString(),
       extractedSkills: extraction.skills,
       parsedRole: extraction.role,
@@ -780,10 +824,23 @@ app.post('/api/resume', requireAuth, async (req: AuthenticatedRequest, res) => {
     };
 
     const saved = await savePersistedResume(record, supabase);
-    res.json(saved);
+    const cleanupWarning = existing?.storagePath && existing.storagePath !== saved.storagePath
+      ? await removeResumeStorageObject(userId, existing.storagePath, supabase)
+      : null;
+    if (cleanupWarning) console.warn('Resume replacement cleanup did not complete.');
+    const { storagePath: _storagePath, ...publicRecord } = saved;
+    return res.json({ ...publicRecord, cleanupWarning: cleanupWarning || undefined });
   } catch (err: any) {
-    console.error('Resume save failed:', err?.message || err);
-    res.status(503).json({ error: 'Could not save the resume and structured profile. Check backend storage configuration.' });
+    if (userId && submittedStoragePath && submittedStoragePath !== existing?.storagePath) {
+      try {
+        const cleanupWarning = await removeResumeStorageObject(userId, submittedStoragePath, supabase);
+        if (cleanupWarning) console.warn('Uncommitted resume upload cleanup did not complete.');
+      } catch (cleanupError) {
+        logSafeServerError('Could not clean up an uncommitted resume upload.', cleanupError);
+      }
+    }
+    logSafeServerError('Resume save failed.', err);
+    return res.status(503).json({ error: safeApiErrorMessage(err, 'Could not save the resume and structured profile. Please try again.') });
   }
 });
 
@@ -798,13 +855,16 @@ app.post('/api/resume/extract', requireAuth, async (req: AuthenticatedRequest, r
     let userGeminiKey: string | null = null;
     if (supabase) {
       try { userGeminiKey = await getUserGeminiApiKey(userId, supabase); }
-      catch (keyError: any) { console.warn('Personal Gemini key lookup failed; deterministic evidence-only extraction will be used:', keyError?.message || keyError); }
+      catch (keyError) {
+        logSafeServerError('Personal Gemini key lookup failed; deterministic evidence-only extraction will be used.', keyError);
+      }
     }
     const result = await extractStructuredResumeProfile(resumeContent, req.body?.name || current?.name, userGeminiKey || effectiveGeminiKeyForSharedMode() || undefined);
     const record: StoredResumeRecord = {
       userId,
       text: resumeContent,
       name: (typeof req.body?.name === 'string' && req.body.name.trim()) ? req.body.name.trim().slice(0, 255) : (current?.name || 'Resume'),
+      storagePath: current?.storagePath,
       lastUpdated: new Date().toISOString(),
       extractedSkills: result.skills,
       parsedRole: result.role,
@@ -815,24 +875,29 @@ app.post('/api/resume/extract', requireAuth, async (req: AuthenticatedRequest, r
     const saved = await savePersistedResume(record, supabase);
     return res.json({ profile: saved.profile, skills: saved.extractedSkills, role: saved.parsedRole, saved: true, profileVersion: saved.profileVersion });
   } catch (err: any) {
-    console.error('Resume extraction failed:', err?.message || err);
-    return res.status(503).json({ error: 'Resume profile extraction or persistence failed. No successful save was claimed.' });
+    logSafeServerError('Resume extraction failed.', err);
+    return res.status(503).json({ error: safeApiErrorMessage(err, 'Resume profile extraction or persistence failed. No successful save was claimed.') });
   }
 });
 
 app.delete('/api/resume', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
+    const existing = await getPersistedResume(userId, supabase);
     await deletePersistedResume(userId, supabase);
-    res.json({ success: true, message: 'Resume profile permanently deleted' });
+    const cleanupWarning = await removeResumeStorageObject(userId, existing?.storagePath, supabase);
+    if (cleanupWarning) console.warn('Resume storage cleanup did not complete.');
+    return res.json({ success: true, message: 'Resume profile permanently deleted', cleanupWarning: cleanupWarning || undefined });
   } catch (err: any) {
-    console.error('Resume delete failed:', err?.message || err);
-    res.status(503).json({ error: 'Could not delete the saved resume and profile.' });
+    logSafeServerError('Resume delete failed.', err);
+    return res.status(503).json({ error: safeApiErrorMessage(err, 'Could not delete the saved resume and profile. Please try again.') });
   }
 });
 
-// Start autonomous background scheduler loop
-initSchedulerWorker(undefined, undefined, 30000, supabase);
+// The web process keeps its legacy embedded worker unless a separate worker is configured.
+if (process.env.RUN_SCHEDULER_WORKER !== 'false') {
+  initSchedulerWorker(undefined, undefined, 30000, supabase);
+}
 
 // Server Initialization with Vite middleware
 async function startServer() {

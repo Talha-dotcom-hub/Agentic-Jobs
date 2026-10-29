@@ -1,5 +1,59 @@
 import { createHash } from 'node:crypto';
 import { SourceConnector, SourceSearchParams, NormalizedSourceResult, NormalizedJob } from './types.js';
+import { isSafeExternalUrl } from '../security/urlValidator.js';
+import { fetchWithRetry } from './http.js';
+
+const DEFAULT_HOST = 'linkedin-data-api.p.rapidapi.com';
+
+function getRapidApiKey(): string | undefined {
+  return process.env.RAPIDAPI_KEY?.trim() || process.env.RAPID_API?.trim() || undefined;
+}
+
+function getRapidApiHost(): string {
+  const host = (process.env.RAPIDAPI_HOST || DEFAULT_HOST).trim().toLowerCase();
+  return /^[a-z0-9-]+\.p\.rapidapi\.com$/.test(host) ? host : '';
+}
+
+function getSearchPath(): string {
+  const searchPath = (process.env.RAPIDAPI_SEARCH_PATH || '/search-jobs').trim();
+  return /^\/[a-z0-9/_-]+$/i.test(searchPath) && !searchPath.includes('..') ? searchPath : '';
+}
+
+function mapRapidApiJob(item: any): NormalizedJob | null {
+  if (!item || typeof item !== 'object') return null;
+  const title = typeof item.title === 'string' ? item.title.trim() : '';
+  const companyValue = item.company?.name || item.companyName || item.company;
+  const company = typeof companyValue === 'string' ? companyValue.trim() : '';
+  const rawUrl = item.url || item.link || item.jobUrl;
+  if (!title || !company || typeof rawUrl !== 'string') return null;
+
+  let url: URL;
+  try { url = new URL(rawUrl); } catch { return null; }
+  if (url.protocol !== 'https:' || url.username || url.password || !isSafeExternalUrl(url.href)) return null;
+
+  const location = typeof item.location === 'string' ? item.location : 'Not specified';
+  return {
+    id: `rapidapi-${createHash('sha256').update(`${url.href}|${title}|${company}`).digest('hex').slice(0, 24)}`,
+    source: 'RapidAPI LinkedIn',
+    title,
+    company,
+    location,
+    workplaceType: /remote/i.test(location) ? 'Remote' : /hybrid/i.test(location) ? 'Hybrid' : 'Not specified',
+    type: ['Full-time', 'Contract', 'Part-time', 'Internship'].includes(item.employmentType) ? item.employmentType : 'Not specified',
+    experienceLevel: ['Internship', 'Entry-Level', 'Mid-Senior', 'Director', 'Executive'].includes(item.experienceLevel) ? item.experienceLevel : 'Not specified',
+    salary: typeof item.salary === 'string' ? item.salary.slice(0, 120) : undefined,
+    originalUrl: url.href,
+    description: typeof item.description === 'string' ? item.description.slice(0, 5000) : '',
+    skillsRequired: Array.isArray(item.skillsRequired)
+      ? item.skillsRequired.filter((value: unknown): value is string => typeof value === 'string').slice(0, 20)
+      : Array.isArray(item.skills)
+        ? item.skills.filter((value: unknown): value is string => typeof value === 'string').slice(0, 20)
+        : [],
+    postedDate: typeof item.postedAt === 'string' ? item.postedAt : typeof item.date === 'string' ? item.date : '',
+    firstSeen: new Date().toISOString(),
+    verified: item.verified === true,
+  };
+}
 
 export const rapidapiConnector: SourceConnector = {
   sourceId: 'rapidapi-linkedin',
@@ -7,117 +61,70 @@ export const rapidapiConnector: SourceConnector = {
   apiKeyEnvVar: 'RAPIDAPI_KEY',
 
   isConfigured(): boolean {
-    return Boolean(process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_KEY.trim().length > 5);
+    return Boolean(getRapidApiKey() && getRapidApiHost() && getSearchPath());
   },
 
   async fetchJobs(params: SourceSearchParams): Promise<NormalizedSourceResult> {
     const startTime = Date.now();
-    const apiKey = process.env.RAPIDAPI_KEY;
+    const apiKey = getRapidApiKey();
+    const host = getRapidApiHost();
+    const searchPath = getSearchPath();
 
-    if (!apiKey || !this.isConfigured()) {
+    if (!apiKey || !host || !searchPath) {
       return {
-        sourceId: this.sourceId,
-        displayName: this.displayName,
-        apiKeyEnvVar: this.apiKeyEnvVar,
-        isConfigured: false,
-        success: false,
-        jobs: [],
-        error: 'RAPIDAPI_KEY is not configured in server environment variables.',
+        sourceId: this.sourceId, displayName: this.displayName, apiKeyEnvVar: this.apiKeyEnvVar,
+        isConfigured: false, success: false, jobs: [],
+        error: !apiKey ? 'RAPIDAPI_KEY (or RAPID_API) is not configured in server environment variables.'
+          : !host ? 'RAPIDAPI_HOST must be a hostname under .p.rapidapi.com.'
+            : 'RAPIDAPI_SEARCH_PATH must be a relative API path without traversal segments.',
         durationMs: Date.now() - startTime,
       };
     }
 
-    const keywords = encodeURIComponent(params.keywords || 'Software Engineer');
-    const page = params.page || 1;
+    const page = Math.max(1, Math.floor(params.page || 1));
+    const limit = Math.max(1, Math.min(Math.floor(params.limit || 10), 25));
+    const url = new URL(searchPath, `https://${host}`);
+    url.searchParams.set('keywords', (params.keywords || '').slice(0, 200));
+    url.searchParams.set('start', String((page - 1) * limit));
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout budget
+      const response = await fetchWithRetry(url.toString(), {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': apiKey,
+          'x-rapidapi-host': host,
+          Accept: 'application/json',
+        },
+      }, { timeoutMs: 8000, retries: 2 });
 
-      const response = await fetch(
-        `https://linkedin-data-api.p.rapidapi.com/search-jobs?keywords=${keywords}&start=${(page - 1) * 10}`,
-        {
-          method: 'GET',
-          headers: {
-            'x-rapidapi-key': apiKey,
-            'x-rapidapi-host': 'linkedin-data-api.p.rapidapi.com',
-          },
-          signal: controller.signal,
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          return {
-            sourceId: this.sourceId,
-            displayName: this.displayName,
-            apiKeyEnvVar: this.apiKeyEnvVar,
-            isConfigured: true,
-            success: false,
-            jobs: [],
-            rateLimited: true,
-            error: 'RapidAPI rate limit exceeded for linkedin-data-api.p.rapidapi.com.',
-            durationMs: Date.now() - startTime,
-          };
-        }
-        throw new Error(`RapidAPI host returned status ${response.status}`);
+      if (response.status === 429) {
+        return {
+          sourceId: this.sourceId, displayName: this.displayName, apiKeyEnvVar: this.apiKeyEnvVar,
+          isConfigured: true, success: false, jobs: [], rateLimited: true,
+          error: 'RapidAPI rate limit exceeded for the configured LinkedIn Data API subscription.',
+          durationMs: Date.now() - startTime,
+        };
       }
+      if (!response.ok) throw new Error(`RapidAPI host returned status ${response.status}`);
 
       const body = await response.json();
-      const normalizedJobs: NormalizedJob[] = [];
-
-      const rawList = body.data || body.items || (Array.isArray(body) ? body : []);
-
-      if (Array.isArray(rawList)) {
-        for (const item of rawList) {
-          if (!item.title) continue;
-
-          const title = item.title;
-          const company = item.company?.name || item.companyName || item.company;
-          const jobUrl = item.url || item.link || item.jobUrl;
-          const loc = item.location || 'Not specified';
-          if (typeof title !== 'string' || !title.trim() || typeof company !== 'string' || !company.trim() || typeof jobUrl !== 'string' || !jobUrl.startsWith('https://')) continue;
-
-          normalizedJobs.push({
-            id: `rapidapi-${createHash('sha256').update(`${jobUrl}|${title}|${company}`).digest('hex').slice(0, 24)}`,
-            source: 'RapidAPI LinkedIn',
-            title,
-            company,
-            location: loc,
-            workplaceType: /remote/i.test(loc) ? 'Remote' : /hybrid/i.test(loc) ? 'Hybrid' : 'Not specified',
-            type: item.employmentType === 'Full-time' || item.employmentType === 'Contract' || item.employmentType === 'Part-time' || item.employmentType === 'Internship' ? item.employmentType : 'Not specified',
-            experienceLevel: ['Internship','Entry-Level','Mid-Senior','Director','Executive'].includes(item.experienceLevel) ? item.experienceLevel : 'Not specified',
-            salary: item.salary || undefined,
-            originalUrl: jobUrl,
-            description: typeof item.description === 'string' ? item.description.slice(0, 5000) : '',
-            skillsRequired: Array.isArray(item.skillsRequired) ? item.skillsRequired.filter((v: unknown) => typeof v === 'string').slice(0, 20) : Array.isArray(item.skills) ? item.skills.filter((v: unknown) => typeof v === 'string').slice(0, 20) : [],
-            postedDate: typeof item.postedAt === 'string' ? item.postedAt : typeof item.date === 'string' ? item.date : '',
-            firstSeen: new Date().toISOString(),
-            verified: item.verified === true,
-          });
-        }
-      }
-
+      const rawList = Array.isArray(body) ? body
+        : Array.isArray(body?.data) ? body.data
+          : Array.isArray(body?.items) ? body.items
+            : Array.isArray(body?.jobs) ? body.jobs
+              : Array.isArray(body?.data?.items) ? body.data.items
+                : [];
+      const jobs = rawList.map(mapRapidApiJob).filter((job: NormalizedJob | null): job is NormalizedJob => job !== null);
       return {
-        sourceId: this.sourceId,
-        displayName: this.displayName,
-        apiKeyEnvVar: this.apiKeyEnvVar,
-        isConfigured: true,
-        success: true,
-        jobs: normalizedJobs,
-        durationMs: Date.now() - startTime,
+        sourceId: this.sourceId, displayName: this.displayName, apiKeyEnvVar: this.apiKeyEnvVar,
+        isConfigured: true, success: true, jobs: jobs.slice(0, limit), durationMs: Date.now() - startTime,
       };
-    } catch (err: any) {
+    } catch (error: any) {
       return {
-        sourceId: this.sourceId,
-        displayName: this.displayName,
-        apiKeyEnvVar: this.apiKeyEnvVar,
-        isConfigured: true,
-        success: false,
-        jobs: [],
-        error: err.name === 'AbortError' ? 'RapidAPI request timed out (8s limit).' : err.message || 'RapidAPI connection error',
+        sourceId: this.sourceId, displayName: this.displayName, apiKeyEnvVar: this.apiKeyEnvVar,
+        isConfigured: true, success: false, jobs: [],
+        error: error?.name === 'AbortError' ? 'RapidAPI request timed out (8s limit).'
+          : String(error?.message || 'RapidAPI connection error').replace(/https?:\/\/[^\s)]+/gi, '[external service]'),
         durationMs: Date.now() - startTime,
       };
     }

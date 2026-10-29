@@ -20,7 +20,7 @@
     <img src="https://img.shields.io/badge/Google_Gemini-AI%20Matching-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Google Gemini" />
     <img src="https://img.shields.io/badge/PDF.js-PDF%20Parsing-E5322D?style=flat-square&logo=adobeacrobatreader&logoColor=white" alt="PDF.js" />
     <img src="https://img.shields.io/badge/PWA-Installable-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA" />
-    <img src="https://img.shields.io/badge/Tests-49%20passed%20locally-16A34A?style=flat-square&logo=checkmarx&logoColor=white" alt="49 tests passed locally" />
+    <img src="https://img.shields.io/badge/Tests-68%20passed%20locally-16A34A?style=flat-square&logo=checkmarx&logoColor=white" alt="68 tests passed locally" />
   </p>
 </div>
 
@@ -206,10 +206,13 @@ Variable names below are documented in `.env.example`. **Never put backend secre
 | `VAPID_PUBLIC_KEY` | Web Push public key | Backend config / public to the push client as required |
 | `VAPID_PRIVATE_KEY` | Web Push signing key | **Backend secret only** |
 | `VAPID_SUBJECT` | VAPID contact, such as a `mailto:` value | Backend config |
-| `APIFY_API_TOKEN` | Optional Apify connector credential | **Backend secret only** |
+| `APIFY_API_TOKEN` (`APIFY_KEY` alias accepted) | Optional Apify connector credential | **Backend secret only** |
 | `APIFY_ACTOR_ID` | Optional Apify actor selection | Backend config |
-| `RAPIDAPI_KEY` | Optional RapidAPI connector credential | **Backend secret only** |
+| `RAPIDAPI_KEY` (`RAPID_API` alias accepted) | Optional RapidAPI connector credential | **Backend secret only** |
+| `RAPIDAPI_HOST` | RapidAPI product host (must end in `.p.rapidapi.com`) | Backend config; defaults to `linkedin-data-api.p.rapidapi.com` |
+| `RAPIDAPI_SEARCH_PATH` | RapidAPI product's job-search path | Backend config; defaults to `/search-jobs` |
 | `ENABLE_APPROVED_THIRD_PARTY_JOB_CONNECTORS` | Explicit opt-in for Apify/RapidAPI after provider terms and authorization are verified | Backend config; defaults to `false` |
+| `RUN_SCHEDULER_WORKER` | Keep the scheduler loop in the API process; set `false` when deploying the separate worker service | Backend config |
 | `PORT` | Server port (defaults to `3000`) | Hosting config |
 
 Generate a strong encryption secret locally instead of copying a value from documentation:
@@ -238,12 +241,14 @@ The repository contains these schema/policy migrations:
 6. `20261026_user_gemini_credentials_and_discovered_jobs.sql`
 7. `006_scan_runs_saved_jobs_and_scheduling.sql`
 8. `20261029_scan_history_deduplication.sql`
+9. `20261030_durable_scan_queue.sql`
+10. `20261030_resume_storage_upload_limits.sql`
 
 Apply them in the dependency order appropriate to your migration workflow. For manual SQL Editor setup on a new project, use the numbered base migrations first, then the account-deletion hardening migration, then the Gemini credential/discovered-job migration and scan-run/saved-job migration. Before applying anything to an existing project, inspect the migrations already applied—do not blindly rerun production SQL. Keep the database migration history consistent with your chosen workflow.
 
 The migrations include user profiles, application data, schedules, push subscriptions/history, encrypted per-user Gemini credentials, discovered-job snapshots, scan-run persistence, and hardening for account-deletion RPC permissions. The contents of a migration file do **not** prove it has been applied to a particular live Supabase project.
 
-The latest migration adds scan IDs and observation counts to discovered jobs, idempotency keys to notifications, and rolling 24-hour scan-history retention. The API only returns the last 24 hours; a database trigger prunes expired history on insert, the backend worker prunes during its polling cycle, and a `pg_cron` job is installed when the extension is enabled. Saved jobs and discovered-job records are not removed when scan-history rows expire.
+The latest migrations add scan IDs and observation counts to discovered jobs, idempotency keys to notifications, rolling 24-hour scan-history retention, an atomic per-user scan enqueue function, retry/lease metadata, and private resume bucket upload limits. The API only returns the last 24 hours; a database trigger prunes expired history on insert, the backend worker prunes during its polling cycle, and a `pg_cron` job is installed when the extension is enabled. Saved jobs and discovered-job records are not removed when scan-history rows expire.
 
 ## 🧪 Run, test, and build
 
@@ -252,9 +257,10 @@ The latest migration adds scan IDs and observation counts to discovered jobs, id
 | `npm run dev` | Run the development app/server |
 | `npm run lint` | TypeScript type-check (`tsc --noEmit`) |
 | `npm run build` | Build the frontend and bundle the backend into `server-dist/` |
+| `npm run worker` | Run the durable Supabase-backed scheduler as a standalone worker |
 | `npx tsx --test tests/*.test.ts` | Run automated test suites |
 
-**Latest local validation (29 Oct 2026):** TypeScript lint/type-check and production build passed, and **49 tests passed with 0 failures**. The production build reports a large JavaScript chunk warning for the existing application bundle. These are local checks, not a guarantee that every live provider, database migration, push subscription, deployment, or scheduled job is configured correctly.
+**Latest local validation (29 Oct 2026):** TypeScript lint/type-check and production build passed, and **68 tests passed with 0 failures**. The production build reports a large JavaScript chunk warning for the existing application bundle. These are local checks, not a guarantee that every live provider, database migration, push subscription, deployment, or scheduled job is configured correctly.
 
 ### Run the built backend
 
@@ -307,11 +313,27 @@ Keep the private key only in the backend secret store. Changing either key inval
 
 ### Backend — Render / Node.js host
 
-The current repository is set up for a separately hosted Express API. A typical Render configuration is:
+There is no checked-in `render.yaml` or Render service declaration, so the repository alone cannot confirm that a persistent Render worker is currently deployed. The API process includes an embedded worker by default; that worker stops whenever its API instance stops or restarts.
+
+For durable scans independent of API restarts, configure two Render services from this repository:
+
+**Web service**
 
 - **Build command:** `npm install && npm run build`
 - **Start command:** `npm start`
-- **Environment:** set backend-only secrets in the host dashboard, never in GitHub or frontend variables.
+- **Environment:** set the API's required backend secrets. Set `RUN_SCHEDULER_WORKER=false` so the web process does not also poll the queue.
+
+**Background worker**
+
+- **Service type:** Background Worker (not a web service)
+- **Build command:** `npm install && npm run build`
+- **Start command:** `npm run worker`
+- **Required environment:** `NODE_ENV=production`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`). Use the same Supabase project as the web service.
+- **Optional runtime environment:** `GEMINI_CREDENTIALS_ENCRYPTION_KEY` and user/server Gemini credentials for matching; `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` for push; approved source credentials and settings only when provider terms and usage rights have been confirmed.
+
+Keep Supabase and all provider credentials in Render's backend environment only. The worker does not need `PORT`, frontend `VITE_*` values, or a browser session. Its database queue supports atomic per-user enqueue, leases, bounded retries, and recovery after a worker restart, provided the new migrations are applied.
+
+Before enabling Apify, confirm the actor subscription/pricing and permitted use. This repository's verified default is the community actor `valig/linkedin-jobs-scraper`; it is paid per result and is not an official Apify actor. Before enabling RapidAPI, verify that the RapidAPI product associated with the key actually supports `RAPIDAPI_HOST` and `RAPIDAPI_SEARCH_PATH`. Neither provider has live credentials in this development environment, so endpoint authentication and returned listings are not live-verified here.
 
 Verify the service URL, CORS/proxy behavior, health endpoint, and logs after deployment. A public `/api/*` proxy does not by itself keep the server alive or schedule scans.
 Backend scans require a continuously available API worker. A sleeping or paused hosting instance cannot guarantee background execution; configure a durable always-on service or external scheduler if the deployment plan does not keep the worker running.
