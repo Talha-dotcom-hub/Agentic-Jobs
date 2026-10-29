@@ -55,7 +55,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
-      className={`app-sidebar sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto shrink-0 hidden lg:block border-r p-3 space-y-5 transition-all duration-300 relative ${
+      className={`app-sidebar desktop-sidebar sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto shrink-0 border-r p-3 space-y-5 transition-all duration-300 relative ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >

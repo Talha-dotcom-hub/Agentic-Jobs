@@ -47,7 +47,7 @@ const MobileBottomNav: React.FC = () => {
   ];
 
   return (
-    <nav aria-label="Main navigation" className="mobile-bottom-nav lg:hidden">
+    <nav aria-label="Main navigation" className="mobile-bottom-nav">
       {items.map(({ view, label, icon: Icon, badge }) => (
         <button key={view} type="button" onClick={() => setActiveView(view)}
           aria-current={activeView === view ? 'page' : undefined}
