@@ -3,6 +3,7 @@ import { Job } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Bookmark, ExternalLink, Sparkles, CheckCircle, PlusCircle, Share2, Copy } from 'lucide-react';
 import { TiltCard } from '../common/TiltCard';
+import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
 
 interface JobCardProps {
   job: Job;
@@ -29,7 +30,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
   const getScoreColor = (score: number | null) => {
     if (score === null || !Number.isFinite(score)) return 'text-slate-300 bg-slate-500/10 border-slate-500/30';
     if (score >= 90) return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30';
-    if (score >= 85) return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
+    if (isQualifyingMatchScore(score)) return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
     if (score >= 75) return 'text-violet-300 bg-violet-500/10 border-violet-500/30';
     return 'text-amber-300 bg-amber-500/10 border-amber-500/30';
   };
@@ -43,6 +44,14 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
             {/* Unboxed clean metadata text */}
             <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-slate-400 flex-wrap">
               <span className="font-semibold text-slate-300">{job.source}</span>
+              {job.foundInLatestScan && (
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                  Found in latest scan
+                </span>
+              )}
+              {job.seenScanCount && job.seenScanCount > 1 && (
+                <span className="text-[10px] text-slate-500">Seen in {job.seenScanCount} scans</span>
+              )}
               <span aria-hidden="true">·</span>
               <span>{job.workplaceType}</span>
               <span aria-hidden="true">·</span>

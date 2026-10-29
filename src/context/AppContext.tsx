@@ -107,7 +107,9 @@ interface AppContextType {
   clearAllNotifications: () => Promise<void>;
 
   pushPermission: NotificationPermission | 'unsupported';
+  pushSubscriptionRegistered: boolean;
   requestPushPermission: () => Promise<void>;
+  authReady: boolean;
 
   toasts: Toast[];
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -149,6 +151,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setActiveViewState(view);
   }, []);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+  const [authReady, setAuthReady] = useState<boolean>(!isSupabaseConfigured);
   const [user, setUser] = useState<UserProfile>({
     id: '',
     email: '',
@@ -188,8 +191,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>(
-    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
+    typeof window !== 'undefined' && 'Notification' in window && 'PushManager' in window
+      ? Notification.permission
+      : 'unsupported'
   );
+  const [pushSubscriptionRegistered, setPushSubscriptionRegistered] = useState(false);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -288,15 +294,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Browsers require an explicit user gesture for the first permission request;
   // this only reuses a permission the user has already granted.
   useEffect(() => {
-    if (!user.isAuthenticated || !user.id || isDemoMode || typeof window === 'undefined') return;
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (!user.isAuthenticated || !user.id || isDemoMode || typeof window === 'undefined') {
+      setPushSubscriptionRegistered(false);
+      return;
+    }
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+      setPushSubscriptionRegistered(false);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
-        const registration = await navigator.serviceWorker?.register('/sw.js', { scope: '/' });
-        if (!registration || cancelled || !('PushManager' in window)) return;
-        const existing = await registration.pushManager.getSubscription();
-        if (!existing && !cancelled) await subscribeUserToWebPush(user.id);
+        if (cancelled || !('PushManager' in window)) return;
+        const registered = await subscribeUserToWebPush(user.id);
+        if (!cancelled) setPushSubscriptionRegistered(registered);
+        if (!registered && !cancelled) {
+          console.warn('Existing push permission could not be reconciled with the server subscription record.');
+        }
       } catch (error) {
         console.warn('Push subscription restore skipped:', error);
       }
@@ -354,37 +368,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('Exited Demo Mode.', 'info');
   };
 
-  // Restore Supabase Auth session on mount
+  // Restore Supabase Auth session on mount and avoid flashing the wrong protected view
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) {
+      setAuthReady(true);
+      return;
+    }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser((prev) => ({
-          ...prev,
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          isAuthenticated: true,
-        }));
-        setIsDemoMode(false);
-        setJobs([]);
-        setSavedJobIds([]);
-        setApplications([]);
-        setNotifications([]);
-        setSources([]);
-        const requestedView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
-        const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings'];
-        if (!requestedView || !appViews.includes(requestedView)) {
-          activeViewRef.current = 'dashboard';
-          setActiveViewState('dashboard');
-          const url = new URL(window.location.href);
-          url.searchParams.set('view', 'dashboard');
-          window.history.replaceState({ ...(window.history.state || {}), agenticJobsView: 'dashboard' }, '', url);
-          viewHistoryRef.current = ['dashboard'];
+    let cancelled = false;
+
+    const hydrateSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (cancelled) return;
+
+        if (session?.user) {
+          setUser((prev) => ({
+            ...prev,
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+            isAuthenticated: true,
+          }));
+          setIsDemoMode(false);
+          setJobs([]);
+          setSavedJobIds([]);
+          setApplications([]);
+          setNotifications([]);
+          setSources([]);
+          const requestedView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
+          const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings'];
+          if (!requestedView || !appViews.includes(requestedView)) {
+            activeViewRef.current = 'dashboard';
+            setActiveViewState('dashboard');
+            const url = new URL(window.location.href);
+            url.searchParams.set('view', 'dashboard');
+            window.history.replaceState({ ...(window.history.state || {}), agenticJobsView: 'dashboard' }, '', url);
+            viewHistoryRef.current = ['dashboard'];
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Auth session restoration failed:', error);
+          showToast('Could not restore your sign-in session. Please try signing in again.', 'error');
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthReady(true);
         }
       }
-    });
+    };
+
+    void hydrateSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
@@ -401,12 +436,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setApplications([]);
         setNotifications([]);
         setSources([]);
+        setAuthReady(true);
         if (window.location.pathname !== '/reset-password' && !window.location.hash.includes('type=recovery')) {
           const requestedView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
           const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings'];
           setActiveView(requestedView && appViews.includes(requestedView) ? requestedView : 'dashboard');
         }
       } else if (event === 'PASSWORD_RECOVERY') {
+        setAuthReady(true);
         setActiveView('reset-password');
       } else if (event === 'SIGNED_OUT') {
         setUser((prev) => ({ ...prev, id: '', email: '', name: '', isAuthenticated: false }));
@@ -418,11 +455,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSources([]);
         setResume(emptyResume);
         setSchedule({ enabled: false, frequencyType: 'hourly', frequencyValue: 4, lastScanTime: '', nextScanTime: '', lastSuccessfulScanJobsCount: 0, sourceFailuresCount: 0, status: 'idle' });
+        setAuthReady(true);
         setActiveView('home');
+      } else if (event === 'INITIAL_SESSION') {
+        // The separate getSession call hydrates this initial state before authReady is set.
+      } else {
+        setAuthReady(true);
       }
     });
 
     return () => {
+      cancelled = true;
       authListener.subscription.unsubscribe();
     };
   }, []);
@@ -962,23 +1005,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const res = await Notification.requestPermission();
         setPushPermission(res);
         if (res === 'granted') {
-          showToast('Browser & PWA Push Notifications enabled!', 'success');
-          if (user.id) {
-            const subscribed = await subscribeUserToWebPush(user.id);
-            if (subscribed) {
-              setUser((prev) => ({
-                ...prev,
-                preferences: { ...prev.preferences, pushNotifications: true },
-              }));
-            }
+          if (!user.id || isDemoMode) {
+            setPushSubscriptionRegistered(false);
+            showToast('Browser permission was granted. Sign in to register push notifications for your account.', 'info');
+            return;
+          }
+          const subscribed = await subscribeUserToWebPush(user.id);
+          setPushSubscriptionRegistered(subscribed);
+          if (subscribed) {
+            setUser((prev) => ({
+              ...prev,
+              preferences: { ...prev.preferences, pushNotifications: true },
+            }));
+            showToast('Push notifications are registered for this account.', 'success');
+          } else {
+            showToast('Browser permission is granted, but the push subscription was not saved. Check the backend configuration and retry.', 'error');
           }
         } else {
+          setPushSubscriptionRegistered(false);
           showToast('Notification permission denied or dismissed.', 'info');
         }
       } catch (e) {
         console.error('Notification error', e);
+        setPushSubscriptionRegistered(false);
+        showToast('Push notification setup failed. Check the browser and backend configuration, then retry.', 'error');
       }
     } else {
+      setPushSubscriptionRegistered(false);
       showToast('Push notifications not supported in this browser.', 'error');
     }
   };
@@ -1022,7 +1075,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         markNotificationAsRead,
         clearAllNotifications,
         pushPermission,
+        pushSubscriptionRegistered,
         requestPushPermission,
+        authReady,
         toasts,
         showToast,
         removeToast,

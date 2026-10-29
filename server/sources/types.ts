@@ -25,6 +25,14 @@ export interface NormalizedJob {
   firstSeen: string;
   verified: boolean;
   isStale?: boolean;
+  sourceLinks?: JobSourceLink[];
+}
+
+export interface JobSourceLink {
+  source: string;
+  sourceJobId: string;
+  url: string;
+  verified: boolean;
 }
 
 export interface NormalizedSourceResult {

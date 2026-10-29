@@ -4,9 +4,10 @@ import { apifyConnector } from '../server/sources/apifyConnector';
 import { rapidapiConnector } from '../server/sources/rapidapiConnector';
 import { publicFeedsConnector } from '../server/sources/publicFeedsConnector';
 import { atsConnector } from '../server/sources/atsConnector';
-import { searchAllSources } from '../server/sources/sourceManager';
+import { deduplicateJobs, isConnectorEnabled, registeredConnectors, searchAllSources } from '../server/sources/sourceManager';
+import { NormalizedJob } from '../server/sources/types';
 
-const envKeys = ['APIFY_API_TOKEN', 'RAPIDAPI_KEY', 'ATS_GREENHOUSE_BOARDS', 'ATS_LEVER_COMPANIES'];
+const envKeys = ['APIFY_API_TOKEN', 'RAPIDAPI_KEY', 'ATS_GREENHOUSE_BOARDS', 'ATS_LEVER_COMPANIES', 'ENABLE_APPROVED_THIRD_PARTY_JOB_CONNECTORS'];
 async function withNoOptionalSources<T>(fn: () => Promise<T>): Promise<T> {
   const previous = new Map(envKeys.map((key) => [key, process.env[key]]));
   for (const key of envKeys) delete process.env[key];
@@ -94,5 +95,35 @@ describe('Job Source Connectors Integration Suite', () => {
         seen.add(key);
       }
     } finally { restoreFetch(); }
+  }));
+
+  test('deduplication strips tracking parameters but preserves separate vacancies with similar names', () => {
+    const makeJob = (id: string, originalUrl: string, source = 'Public Jobs Feed'): NormalizedJob => ({
+      id,
+      source,
+      title: 'Software Engineer',
+      company: 'Example Inc',
+      location: 'Remote',
+      originalUrl,
+      description: '',
+      skillsRequired: [],
+      postedDate: '',
+      firstSeen: new Date().toISOString(),
+      verified: false,
+    });
+    const jobs = deduplicateJobs([
+      makeJob('one', 'https://jobs.example.com/roles/123?utm_source=newsletter'),
+      makeJob('duplicate', 'https://jobs.example.com/roles/123?gclid=tracking', 'Greenhouse ATS'),
+      makeJob('different', 'https://jobs.example.com/roles/456'),
+    ]);
+
+    assert.deepEqual(jobs.map((job) => job.id), ['one', 'different']);
+    assert.deepEqual(jobs[0].sourceLinks?.map((link) => link.source), ['Public Jobs Feed', 'Greenhouse ATS']);
+  });
+
+  test('third-party connectors stay disabled until terms and authorization are explicitly confirmed', async () => withNoOptionalSources(async () => {
+    const optionalSources = registeredConnectors.filter((source) => source.sourceId === 'apify-linkedin' || source.sourceId === 'rapidapi-linkedin');
+    assert.equal(optionalSources.length, 2);
+    for (const source of optionalSources) assert.equal(isConnectorEnabled(source), false);
   }));
 });

@@ -15,13 +15,17 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { InstallPWA } from '../common/InstallPWA';
 
 export const Sidebar: React.FC = () => {
   const { activeView, setActiveView, savedJobIds, notifications, schedule, runScanNow } = useApp();
   const [collapsed, setCollapsed] = useState(false);
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
+  const formatScanTime = (value: string) => {
+    if (!value) return 'Not recorded';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Unavailable' : date.toLocaleString();
+  };
 
   const navItems: { view: ActiveView; label: string; icon: React.ReactNode; badge?: number | string }[] = [
     { view: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -37,7 +41,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
-      className={`shrink-0 hidden lg:block bg-[#0B0F19] border-r border-slate-800/80 min-h-[calc(100vh-4rem)] p-3 space-y-5 transition-all duration-300 relative ${
+      className={`app-sidebar shrink-0 hidden lg:block border-r min-h-[calc(100vh-4rem)] p-3 space-y-5 transition-all duration-300 relative ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
@@ -64,13 +68,15 @@ export const Sidebar: React.FC = () => {
             </span>
           </div>
           <div className="text-[11px] text-slate-400 space-y-1">
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-2">
               <span>Last Scan:</span>
-              <span className="text-slate-200 font-mono">2h ago</span>
+              <span className="text-slate-200 text-right">{formatScanTime(schedule.lastScanTime)}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-2">
               <span>Next Scan:</span>
-              <span className="text-slate-200 font-mono">2h left</span>
+              <span className="text-slate-200 text-right">
+                {schedule.enabled && schedule.nextScanTime ? formatScanTime(schedule.nextScanTime) : 'Not scheduled'}
+              </span>
             </div>
           </div>
           <button
@@ -131,7 +137,6 @@ export const Sidebar: React.FC = () => {
           </p>
         </div>
       )}
-      <InstallPWA />
     </aside>
   );
 };

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
+import { resolveNotificationDestination } from '../../lib/notificationNavigation';
 import { Bell, CheckCircle2, AlertTriangle, Clock, Trash2, Shield, Radio } from 'lucide-react';
 
 export const Notifications: React.FC = () => {
@@ -8,9 +9,16 @@ export const Notifications: React.FC = () => {
     markNotificationAsRead,
     clearAllNotifications,
     pushPermission,
+    pushSubscriptionRegistered,
     requestPushPermission,
+    setActiveView,
   } = useApp();
 
+  const handleNotificationClick = (notif: (typeof notifications)[number]) => {
+    void markNotificationAsRead(notif.id);
+    const targetView = resolveNotificationDestination(notif.link, notif.type);
+    setActiveView(targetView);
+  };
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center justify-between">
@@ -44,20 +52,24 @@ export const Notifications: React.FC = () => {
               <span>Browser &amp; PWA Push Notifications</span>
             </div>
             <p className="text-slate-400 text-[11px]">
-              Receive instant alerts when new job opportunities scoring &gt;85% are discovered or when application follow-up reminders are due.
+              On supported browsers and operating systems, receive alerts for high-match jobs and application follow-ups. Delivery requires browser permission, a registered server subscription, and an available backend; background delivery varies by device and OS settings.
             </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {pushPermission === 'granted' ? (
+            {pushPermission === 'granted' && pushSubscriptionRegistered ? (
               <button
                 type="button"
-                onClick={requestPushPermission}
+                disabled
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Notifications Enabled</span>
+                <span>Push Registered</span>
               </button>
+            ) : pushPermission === 'unsupported' ? (
+              <div className="px-3.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-[11px]">
+                Push is not supported in this browser
+              </div>
             ) : pushPermission === 'denied' ? (
               <div className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px]">
                 Permission Blocked in Browser Settings
@@ -69,7 +81,7 @@ export const Notifications: React.FC = () => {
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white shadow-md shadow-violet-600/20 flex items-center gap-1.5"
               >
                 <Bell className="w-3.5 h-3.5" />
-                <span>Enable Push Notifications</span>
+                <span>{pushPermission === 'granted' ? 'Retry Push Setup' : 'Enable Push Notifications'}</span>
               </button>
             )}
           </div>
@@ -92,7 +104,7 @@ export const Notifications: React.FC = () => {
           notifications.map((notif) => (
             <div
               key={notif.id}
-              onClick={() => markNotificationAsRead(notif.id)}
+              onClick={() => handleNotificationClick(notif)}
               className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-4 text-xs ${
                 notif.read
                   ? 'bg-slate-900/30 border-slate-800/60 opacity-70'

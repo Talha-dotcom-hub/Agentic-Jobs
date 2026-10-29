@@ -5,58 +5,87 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+interface InstallState {
+  deferredPrompt: BeforeInstallPromptEvent | null;
+  isInstalled: boolean;
+}
+
+const installState: InstallState = {
+  deferredPrompt: null,
+  isInstalled: false,
+};
+const installListeners = new Set<() => void>();
+
+function notifyInstallState() {
+  installListeners.forEach((listener) => listener());
+}
+
+function detectInstalledMode() {
+  return typeof window !== 'undefined' && (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true
+  );
+}
+
+function detectPlatform(): 'ios' | 'android' | 'desktop' {
+  if (typeof window === 'undefined') return 'desktop';
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) ||
+    (userAgent.includes('macintosh') && window.navigator.maxTouchPoints > 1);
+  if (isIOSDevice) return 'ios';
+  if (userAgent.includes('android')) return 'android';
+  return 'desktop';
+}
+
+if (typeof window !== 'undefined') {
+  installState.isInstalled = detectInstalledMode();
+  window.addEventListener('beforeinstallprompt', (event: Event) => {
+    event.preventDefault();
+    installState.deferredPrompt = event as BeforeInstallPromptEvent;
+    notifyInstallState();
+  });
+  window.addEventListener('appinstalled', () => {
+    installState.isInstalled = true;
+    installState.deferredPrompt = null;
+    notifyInstallState();
+  });
+}
+
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [state, setState] = useState(installState);
+  const [platform] = useState(detectPlatform);
 
   useEffect(() => {
-    // Detect standalone mode (already installed)
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    setIsInstalled(isStandalone);
-
-    // Detect iOS devices
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
-    setIsIOS(isIOSDevice);
-
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-    };
-
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
+    const syncInstallState = () => setState({ ...installState });
+    installListeners.add(syncInstallState);
+    syncInstallState();
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
+      installListeners.delete(syncInstallState);
     };
   }, []);
 
   const install = async () => {
+    const deferredPrompt = installState.deferredPrompt;
     if (!deferredPrompt) return false;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-      return true;
+    try {
+      await deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      installState.deferredPrompt = null;
+      notifyInstallState();
+      return outcome === 'accepted';
+    } catch (error) {
+      console.error('PWA installation prompt failed:', error);
+      installState.deferredPrompt = null;
+      notifyInstallState();
+      return false;
     }
-    return false;
   };
 
   return {
-    isInstallable: !!deferredPrompt,
-    isInstalled,
-    isIOS,
+    isInstallable: !!state.deferredPrompt,
+    isInstalled: state.isInstalled,
+    platform,
     install,
   };
 }

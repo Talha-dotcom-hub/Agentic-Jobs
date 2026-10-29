@@ -22,4 +22,4 @@ Disallow: /notifications
 Disallow: /settings
 Disallow: /api/
 
-Sitemap: https://agenticjobs.dev/sitemap.xml
+Sitemap: https://agenticjobs.netlify.app/sitemap.xml

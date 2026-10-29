@@ -4,14 +4,14 @@ import { JobCard } from '../../components/jobs/JobCard';
 import { JobDetailDrawer } from '../../components/jobs/JobDetailDrawer';
 import { Job } from '../../types';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
+import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
 
 export const RecommendedJobs: React.FC = () => {
   const { jobs } = useApp();
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
-  // Filter to estimated match scores >= 85%
   const recommendedJobs = jobs
-    .filter((job) => job.matchScore !== null && job.matchScore >= 85)
+    .filter((job) => isQualifyingMatchScore(job.matchScore))
     .sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1));
 
   return (

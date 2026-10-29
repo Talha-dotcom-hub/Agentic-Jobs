@@ -50,6 +50,27 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
               <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-cyan-400" />{job.location} ({job.workplaceType})</span>
               {job.salary && <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5 text-emerald-400" />{job.salary}</span>}
             </div>
+            {job.sourceLinks && job.sourceLinks.length > 1 && (
+              <section className="space-y-2" aria-label="Original source links">
+                <h3 className="text-xs font-semibold text-slate-200">Source links</h3>
+                <ul className="flex flex-wrap gap-2">
+                  {job.sourceLinks.map((sourceLink) => (
+                    <li key={`${sourceLink.source}:${sourceLink.url}`}>
+                      <a
+                        href={sourceLink.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-700 px-3 text-[11px] text-slate-300 hover:bg-slate-800"
+                      >
+                        {sourceLink.source}
+                        {sourceLink.verified ? <CheckCircle2 className="h-3 w-3 text-emerald-400" aria-label="Source marked verified" /> : null}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
           <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-violet-950/40 via-slate-900/80 to-slate-900 border border-violet-500/30 space-y-4">
             <div className="flex items-center justify-between gap-3">

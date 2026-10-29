@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { JobDetailDrawer } from '../../components/jobs/JobDetailDrawer';
 import { JobCardSkeleton } from '../../components/common/Skeleton';
@@ -18,6 +18,40 @@ import {
   BarChart3,
   ExternalLink,
 } from 'lucide-react';
+import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
+
+const AnimatedStat: React.FC<{ value: number; disabled: boolean }> = ({ value, disabled }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  const displayValueRef = useRef(value);
+
+  useEffect(() => {
+    if (disabled || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      displayValueRef.current = value;
+      setDisplayValue(value);
+      return;
+    }
+
+    const startValue = displayValueRef.current;
+    if (startValue === value) return;
+
+    const startedAt = performance.now();
+    const duration = 360;
+    let frame = 0;
+    const animate = (now: number) => {
+      const progress = Math.min((now - startedAt) / duration, 1);
+      const eased = 1 - (1 - progress) ** 3;
+      const nextValue = Math.round(startValue + (value - startValue) * eased);
+      displayValueRef.current = nextValue;
+      setDisplayValue(nextValue);
+      if (progress < 1) frame = requestAnimationFrame(animate);
+    };
+
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [disabled, value]);
+
+  return <>{displayValue}</>;
+};
 
 export const Dashboard: React.FC = () => {
   const {
@@ -29,11 +63,12 @@ export const Dashboard: React.FC = () => {
     setActiveView,
     runScanNow,
     user,
+    isDemoMode,
   } = useApp();
 
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
-  const recommendedJobs = jobs.filter((j) => j.matchScore !== null && j.matchScore >= 85);
+  const recommendedJobs = jobs.filter((j) => isQualifyingMatchScore(j.matchScore));
   const appliedApps = applications.filter((a) => a.status === 'Applied');
   const interviewApps = applications.filter((a) => a.status === 'Interview');
   const offerApps = applications.filter((a) => a.status === 'Offer');
@@ -51,6 +86,15 @@ export const Dashboard: React.FC = () => {
   const overdueFollowups = appliedApps.filter(
     (app) => new Date(app.appliedDate) < fiveDaysAgo
   );
+  const lastScanDate = schedule.lastScanTime ? new Date(schedule.lastScanTime) : null;
+  const lastScanLabel = lastScanDate && Number.isFinite(lastScanDate.getTime())
+    ? lastScanDate.toLocaleString()
+    : 'No completed scan recorded';
+  const scanStatusLabel = schedule.status === 'running'
+    ? 'A scan is running'
+    : schedule.status === 'error'
+      ? 'The last scan encountered an error'
+      : `Scheduled scanning is ${schedule.enabled ? 'on' : 'off'}`;
 
   return (
     <div className="space-y-8">
@@ -61,12 +105,9 @@ export const Dashboard: React.FC = () => {
             <h1 className="text-lg sm:text-2xl font-bold text-white">
               Welcome back, {user.name} 👋
             </h1>
-            <span className="px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[10px] font-bold text-violet-300">
-              PRO
-            </span>
           </div>
           <p className="text-xs text-slate-400">
-            Automated scan engine active · Last scan completed {schedule.lastScanTime ? '2 hours ago' : 'Recently'}
+            {scanStatusLabel} · Last scan: {lastScanLabel}
           </p>
         </div>
 
@@ -111,61 +152,65 @@ export const Dashboard: React.FC = () => {
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 text-xs">
         <TiltCard>
-          <div
+          <button
+            type="button"
             onClick={() => setActiveView('discover')}
-            className="p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 cursor-pointer transition-all space-y-1 group min-w-0 h-full card-hover-effect"
+            className="w-full text-left p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all space-y-1 group min-w-0 h-full card-hover-effect"
           >
             <div className="flex items-center justify-between text-slate-400">
               <span className="truncate">Matches Found</span>
               <Compass className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform shrink-0" />
             </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-white tabular-nums">{jobs.length}</div>
+            <div className="text-xl sm:text-2xl font-extrabold text-white tabular-nums"><AnimatedStat value={jobs.length} disabled={isDemoMode} /></div>
             <div className="text-[10px] text-slate-500 truncate">Source status depends on backend checks</div>
-          </div>
+          </button>
         </TiltCard>
 
         <TiltCard>
-          <div
+          <button
+            type="button"
             onClick={() => setActiveView('recommended')}
-            className="p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 cursor-pointer transition-all space-y-1 group min-w-0 h-full card-hover-effect"
+            className="w-full text-left p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all space-y-1 group min-w-0 h-full card-hover-effect"
           >
             <div className="flex items-center justify-between text-slate-400">
               <span className="truncate">High Matches</span>
               <Sparkles className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />
             </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-cyan-300 tabular-nums">{recommendedJobs.length}</div>
+            <div className="text-xl sm:text-2xl font-extrabold text-cyan-300 tabular-nums"><AnimatedStat value={recommendedJobs.length} disabled={isDemoMode} /></div>
             <div className="text-[10px] text-slate-500 truncate">&gt;85% match score</div>
-          </div>
+          </button>
         </TiltCard>
 
         <TiltCard>
-          <div
+          <button
+            type="button"
             onClick={() => setActiveView('saved')}
-            className="p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 cursor-pointer transition-all space-y-1 group min-w-0 h-full card-hover-effect"
+            className="w-full text-left p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all space-y-1 group min-w-0 h-full card-hover-effect"
           >
             <div className="flex items-center justify-between text-slate-400">
               <span className="truncate">Saved Jobs</span>
               <Bookmark className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform shrink-0" />
             </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-violet-300 tabular-nums">{savedJobIds.length}</div>
+            <div className="text-xl sm:text-2xl font-extrabold text-violet-300 tabular-nums"><AnimatedStat value={savedJobIds.length} disabled={isDemoMode} /></div>
             <div className="text-[10px] text-slate-500 truncate">Bookmarked jobs</div>
-          </div>
+          </button>
         </TiltCard>
 
         <TiltCard>
-          <div
+          <button
+            type="button"
             onClick={() => setActiveView('applications')}
-            className="p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 cursor-pointer transition-all space-y-1 group min-w-0 h-full card-hover-effect"
+            className="w-full text-left p-3.5 sm:p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all space-y-1 group min-w-0 h-full card-hover-effect"
           >
             <div className="flex items-center justify-between text-slate-400">
               <span className="truncate">Applications</span>
               <Briefcase className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform shrink-0" />
             </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-emerald-300 tabular-nums">{applications.length}</div>
+            <div className="text-xl sm:text-2xl font-extrabold text-emerald-300 tabular-nums"><AnimatedStat value={applications.length} disabled={isDemoMode} /></div>
             <div className="text-[10px] text-slate-500 truncate">
               {appliedApps.length} Applied · {interviewApps.length} Interview
             </div>
-          </div>
+          </button>
         </TiltCard>
       </div>
 
@@ -278,7 +323,9 @@ export const Dashboard: React.FC = () => {
             </h2>
 
             <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3 text-xs h-full">
-              {sources.map((src) => (
+              {sources.length === 0 ? (
+                <p className="py-2 text-slate-400">No source health data is available yet.</p>
+              ) : sources.map((src) => (
                 <div key={src.id} className="flex items-center justify-between py-1.5 border-b border-slate-800/60 last:border-none">
                   <div>
                     <div className="font-semibold text-slate-200">{src.name}</div>

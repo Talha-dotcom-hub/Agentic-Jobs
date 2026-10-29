@@ -3,8 +3,11 @@ import { sendPushNotificationToUser } from '../push/webPushService.js';
 import { getPersistedResume, deriveResumeSearchKeywords } from '../resume/resumeManager.js';
 import { Type } from '@google/genai';
 import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { generateWithGeminiFallback } from '../ai/geminiFallback.js';
 import { getUserGeminiApiKey } from '../credentials/geminiCredentialVault.js';
+import { getJobSourceLinks, getStableJobIdentity, mergeJobSourceLinks } from '../sources/jobIdentity.js';
+import { isQualifyingMatchScore } from '../../shared/matchThreshold.js';
 
 export interface UserScanConfig {
   userId: string;
@@ -17,6 +20,7 @@ export interface UserScanConfig {
   resumeText?: string;
   isScanning?: boolean;
   scanKind?: 'scheduled' | 'manual';
+  scanId?: string;
 }
 
 export interface ScanHistoryRecord {
@@ -29,8 +33,19 @@ export interface ScanHistoryRecord {
   jobsDiscovered: number;
   newJobsFound: number;
   highMatchJobsCount: number;
+  sourcesChecked: number;
+  verifiedJobsCount: number;
+  duplicatesSuppressedCount: number;
   sourcesSummary: string;
+  sourceErrors: string[];
   errorDetails?: string;
+}
+
+function safeErrorSummary(message: string): string {
+  return message
+    .replace(/https?:\/\/[^\s)]+/gi, '[external service]')
+    .replace(/\b(api[_ -]?key|token|authorization)\b(?:\s*[:=]\s*|\s+)[^\s,;]+/gi, '$1=[redacted]')
+    .slice(0, 1000);
 }
 
 // In-memory scan locks & history store
@@ -70,6 +85,7 @@ export async function executeScheduledUserScan(
   error?: string;
 }> {
   const startTime = Date.now();
+  const scanId = config.scanId || randomUUID();
 
   // Atomic Lock Check
   if (activeLocks.has(config.userId)) {
@@ -101,13 +117,30 @@ export async function executeScheduledUserScan(
     const searchResult = await searchAllSources({ keywords, limit: 10 });
     const successfulSources = searchResult.sourceStatuses.filter((source) => source.success);
     if (successfulSources.length === 0) {
-      const details = searchResult.sourceStatuses.map((source) => `${source.displayName}: ${source.error || 'unavailable'}`).join('; ');
-      throw new Error(`All configured job sources failed for this scan. ${details}`);
+      const failedSources = searchResult.sourceStatuses
+        .filter((source) => source.isConfigured)
+        .map((source) => source.displayName);
+      throw new Error(`All configured job sources failed for this scan: ${failedSources.join(', ') || 'no source succeeded'}.`);
     }
 
     const discoveredJobs = searchResult.jobs;
+    const sourcesChecked = searchResult.sourceStatuses.filter((source) => source.isConfigured).length;
+    const verifiedJobsCount = discoveredJobs.filter((job) => job.verified).length;
+    const sourceJobsCount = searchResult.sourceStatuses.reduce((count, source) => count + source.jobs.length, 0);
+    const duplicatesSuppressedCount = Math.max(0, sourceJobsCount - discoveredJobs.length);
+    const sourceErrors = searchResult.sourceStatuses
+      .filter((source) => source.isConfigured && !source.success)
+      .map((source) => {
+        const error = String(source.error || '').toLowerCase();
+        const reason = source.rateLimited || /rate.?limit|quota|429/.test(error)
+          ? 'rate limited'
+          : /timed out|timeout/.test(error)
+            ? 'request timed out'
+            : 'request failed';
+        return `${source.displayName}: ${reason}`;
+      });
     let highMatchesCount = 0;
-    const highMatchCandidates: Array<{ job: (typeof discoveredJobs)[number]; score: number }> = [];
+    const highMatchCandidates: Array<{ job: (typeof discoveredJobs)[number]; score: number; jobKey: string }> = [];
 
         // Bring-your-own-key is the default for this open-source app. A shared service key
     // is used only when the operator explicitly opts in via ALLOW_SHARED_GEMINI_KEY=true.
@@ -128,7 +161,7 @@ export async function executeScheduledUserScan(
     if (resumeText && activeGeminiKey) {
       // Bounded AI calls prevent one scan from consuming an unbounded amount of quota.
       for (const job of discoveredJobs.slice(0, 10)) {
-        const stableUrl = job.originalUrl || `${job.source}|${job.title}|${job.company}`;
+        const stableUrl = getStableJobIdentity(job);
         try {
           const safeTitle = String(job.title || '').slice(0, 240);
           const safeCompany = String(job.company || '').slice(0, 240);
@@ -161,21 +194,35 @@ ${resumeText.slice(0, 3000)}
             },
           });
           const parsed = JSON.parse(aiRes.text || '{}');
-          const rawScore = Number(parsed.score);
-          if (!Number.isFinite(rawScore) || rawScore < 0 || rawScore > 100) {
+          const rawScore = parsed.score;
+          if (typeof rawScore !== 'number' || !Number.isInteger(rawScore) || rawScore < 0 || rawScore > 100) {
             throw new Error('Gemini returned an invalid match score. No score was saved for this job.');
           }
+          if (
+            !Array.isArray(parsed.matchingEvidence) ||
+            !Array.isArray(parsed.potentialSkillGaps) ||
+            !Array.isArray(parsed.eligibilityWarnings)
+          ) {
+            throw new Error('Gemini returned an invalid match-evidence schema. No score was saved for this job.');
+          }
           const evaluated = {
-            score: Math.round(rawScore),
-            matchingEvidence: Array.isArray(parsed.matchingEvidence) ? parsed.matchingEvidence.filter((v: unknown) => typeof v === 'string').slice(0, 12) : [],
-            potentialSkillGaps: Array.isArray(parsed.potentialSkillGaps) ? parsed.potentialSkillGaps.filter((v: unknown) => typeof v === 'string').slice(0, 12) : [],
-            eligibilityWarnings: Array.isArray(parsed.eligibilityWarnings) ? parsed.eligibilityWarnings.filter((v: unknown) => typeof v === 'string').slice(0, 12) : [],
+            score: rawScore,
+            matchingEvidence: parsed.matchingEvidence.filter((v: unknown): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, 12),
+            potentialSkillGaps: parsed.potentialSkillGaps.filter((v: unknown): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, 12),
+            eligibilityWarnings: parsed.eligibilityWarnings.filter((v: unknown): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, 12),
           };
           const score = evaluated.score;
+          if (isQualifyingMatchScore(score) && evaluated.matchingEvidence.length === 0) {
+            throw new Error('Gemini returned a qualifying score without supporting resume evidence. No score was saved for this job.');
+          }
           matchByUrl.set(stableUrl, evaluated);
-          if (score >= 85) {
+          if (isQualifyingMatchScore(score)) {
             highMatchesCount++;
-            highMatchCandidates.push({ job, score });
+            highMatchCandidates.push({
+              job,
+              score,
+              jobKey: createHash('sha256').update(stableUrl).digest('hex'),
+            });
           }
         } catch (error: any) {
           const errorText = String(error?.message || 'AI evaluation failed');
@@ -202,16 +249,16 @@ ${resumeText.slice(0, 3000)}
     let newlyFoundCount = discoveredJobs.length;
     if (supabaseClient && discoveredJobs.length > 0) {
       const nowIso = new Date().toISOString();
-      const jobKeys = discoveredJobs.map((job) => createHash('sha256').update(job.originalUrl || `${job.source}|${job.title}|${job.company}`).digest('hex'));
+      const jobKeys = discoveredJobs.map((job) => createHash('sha256').update(getStableJobIdentity(job)).digest('hex'));
       const { data: existingRows, error: existingError } = await supabaseClient
         .from('user_discovered_jobs')
-        .select('job_key,match_score,matching_evidence,potential_skill_gaps,eligibility_warnings')
+        .select('job_key,match_score,matching_evidence,potential_skill_gaps,eligibility_warnings,seen_scan_count,latest_scan_id,source_links')
         .eq('user_id', config.userId)
         .in('job_key', jobKeys);
       if (existingError) throw new Error(`Could not inspect existing discovered jobs: ${existingError.message}`);
       const existingByKey = new Map<string, any>((existingRows || []).map((row: any) => [row.job_key, row]));
       const records = discoveredJobs.map((job) => {
-        const stableUrl = job.originalUrl || `${job.source}|${job.title}|${job.company}`;
+        const stableUrl = getStableJobIdentity(job);
         const jobKey = createHash('sha256').update(stableUrl).digest('hex');
         const evaluated = matchByUrl.get(stableUrl);
         const existing = existingByKey.get(jobKey);
@@ -232,12 +279,17 @@ ${resumeText.slice(0, 3000)}
           skills_required: Array.isArray(job.skillsRequired) ? job.skillsRequired : [],
           posted_date: job.postedDate || null,
           verified: Boolean(job.verified),
+          source_links: mergeJobSourceLinks(existing?.source_links, getJobSourceLinks(job)),
           is_stale: Boolean(job.isStale),
           match_score: evaluated ? evaluated.score : (existing?.match_score ?? null),
           matching_evidence: evaluated ? evaluated.matchingEvidence : (existing?.matching_evidence || []),
           potential_skill_gaps: evaluated ? evaluated.potentialSkillGaps : (existing?.potential_skill_gaps || []),
           eligibility_warnings: evaluated ? evaluated.eligibilityWarnings : (existing?.eligibility_warnings || []),
           last_seen_at: nowIso,
+          latest_scan_id: scanId,
+          seen_scan_count: existing
+            ? Number(existing.seen_scan_count || 1) + (existing.latest_scan_id === scanId ? 0 : 1)
+            : 1,
           updated_at: nowIso,
         };
       });
@@ -249,19 +301,29 @@ ${resumeText.slice(0, 3000)}
     }
 
     // Notifications are persisted after the result rows, so the UI and push message reflect real state.
+    let newlyNotifiedCandidates: typeof highMatchCandidates = [];
     if (supabaseClient && highMatchCandidates.length > 0) {
-      const matchNotifications = highMatchCandidates.map(({ job, score }) => ({
+      const matchNotifications = highMatchCandidates.map(({ job, score, jobKey }) => ({
         user_id: config.userId,
         title: `High match opportunity found: ${score}%`,
         message: `${job.title} at ${job.company} matches evidence in your resume.`,
         type: 'match',
         link: '/?view=recommended',
         read: false,
+        dedupe_key: `match:${jobKey}`,
       }));
-      const { error: notificationError } = await supabaseClient.from('notifications').insert(matchNotifications);
+      const { data: insertedNotifications, error: notificationError } = await supabaseClient
+        .from('notifications')
+        .upsert(matchNotifications, { onConflict: 'user_id,dedupe_key', ignoreDuplicates: true })
+        .select('dedupe_key');
       if (notificationError) console.warn('Could not persist match notifications:', notificationError.message);
+      const candidatesByKey = new Map(highMatchCandidates.map((candidate) => [`match:${candidate.jobKey}`, candidate]));
+      newlyNotifiedCandidates = (insertedNotifications || []).flatMap((row: { dedupe_key: string }) => {
+        const candidate = candidatesByKey.get(row.dedupe_key);
+        return candidate ? [candidate] : [];
+      });
     }
-    for (const { job, score } of highMatchCandidates) {
+    for (const { job, score } of newlyNotifiedCandidates) {
       try {
         await sendPushNotificationToUser(config.userId, {
           title: `High match opportunity found: ${score}%`,
@@ -283,21 +345,26 @@ ${resumeText.slice(0, 3000)}
       message: completionTitle,
       data: { url: '/?view=recommended', category: 'scan' as const },
     };
+    let shouldSendCompletionPush = false;
     if (supabaseClient) {
-      const { error: notificationError } = await supabaseClient.from('notifications').insert({
+      const { data: insertedCompletion, error: notificationError } = await supabaseClient.from('notifications').upsert({
         user_id: config.userId,
         title: completionNotification.title,
         message: completionNotification.message,
         type: 'scan',
         link: '/?view=recommended',
         read: false,
-      });
+        dedupe_key: `scan:${scanId}`,
+      }, { onConflict: 'user_id,dedupe_key', ignoreDuplicates: true }).select('id');
       if (notificationError) console.warn('Could not persist scan completion notification:', notificationError.message);
+      shouldSendCompletionPush = Boolean(insertedCompletion?.length);
     }
-    try {
-      await sendPushNotificationToUser(config.userId, completionNotification, supabaseClient);
-    } catch (pushErr) {
-      console.warn('Scheduled scan push dispatch warning:', pushErr);
+    if (shouldSendCompletionPush) {
+      try {
+        await sendPushNotificationToUser(config.userId, completionNotification, supabaseClient);
+      } catch (pushErr) {
+        console.warn('Scheduled scan push dispatch warning:', pushErr);
+      }
     }
 
     const nextRun = calculateNextScanTime(
@@ -307,7 +374,7 @@ ${resumeText.slice(0, 3000)}
     ).toISOString();
 
     const record: ScanHistoryRecord = {
-      id: `scan-${Date.now()}`,
+      id: scanId,
       userId: config.userId,
       startedAt: new Date(startTime).toISOString(),
       completedAt: new Date().toISOString(),
@@ -316,7 +383,11 @@ ${resumeText.slice(0, 3000)}
       jobsDiscovered: discoveredJobs.length,
       newJobsFound: newlyFoundCount,
       highMatchJobsCount: highMatchesCount,
+      sourcesChecked,
+      verifiedJobsCount,
+      duplicatesSuppressedCount,
       sourcesSummary: searchResult.sourceStatuses.map((s) => `${s.displayName}: ${s.jobs.length}`).join(' · '),
+      sourceErrors,
     };
 
     // Log to in-memory store
@@ -326,7 +397,8 @@ ${resumeText.slice(0, 3000)}
     // Persist to Supabase if available
     if (supabaseClient) {
       try {
-        const { error: historyError } = await supabaseClient.from('scan_history').insert({
+        const { error: historyError } = await supabaseClient.from('scan_history').upsert({
+          id: record.id,
           user_id: config.userId,
           started_at: record.startedAt,
           completed_at: record.completedAt,
@@ -335,8 +407,12 @@ ${resumeText.slice(0, 3000)}
           jobs_discovered: record.jobsDiscovered,
           new_jobs_found: record.newJobsFound,
           high_match_jobs_count: record.highMatchJobsCount,
+          sources_checked: record.sourcesChecked,
+          verified_jobs_count: record.verifiedJobsCount,
+          duplicates_suppressed_count: record.duplicatesSuppressedCount,
           sources_summary: record.sourcesSummary,
-        });
+          source_errors: record.sourceErrors,
+        }, { onConflict: 'id' });
         if (historyError) console.warn('Failed to insert scan_history to Supabase:', historyError.message);
       } catch (dbErr: any) {
         console.warn('Failed to insert scan_history to Supabase:', dbErr?.message || dbErr);
@@ -356,11 +432,11 @@ ${resumeText.slice(0, 3000)}
       sourceFailuresCount: searchResult.sourceStatuses.filter((source) => source.isConfigured && !source.success).length,
     };
   } catch (err: any) {
-    const errorMessage = String(err?.message || 'Scheduled scan execution error').slice(0, 1000);
+    const errorMessage = safeErrorSummary(String(err?.message || 'Scheduled scan execution error'));
     const failedAt = new Date();
     const retryAt = new Date(failedAt.getTime() + 15 * 60 * 1000).toISOString();
     const failureRecord: ScanHistoryRecord = {
-      id: `scan-${Date.now()}`,
+      id: scanId,
       userId: config.userId,
       startedAt: new Date(startTime).toISOString(),
       completedAt: failedAt.toISOString(),
@@ -369,14 +445,19 @@ ${resumeText.slice(0, 3000)}
       jobsDiscovered: 0,
       newJobsFound: 0,
       highMatchJobsCount: 0,
+      sourcesChecked: 0,
+      verifiedJobsCount: 0,
+      duplicatesSuppressedCount: 0,
       sourcesSummary: 'Scan failed before completion',
+      sourceErrors: [errorMessage],
       errorDetails: errorMessage,
     };
     scanHistoryStore.unshift(failureRecord);
     if (scanHistoryStore.length > 500) scanHistoryStore.length = 500;
     if (supabaseClient) {
       try {
-        const { error: historyError } = await supabaseClient.from('scan_history').insert({
+        const { error: historyError } = await supabaseClient.from('scan_history').upsert({
+          id: failureRecord.id,
           user_id: config.userId,
           started_at: failureRecord.startedAt,
           completed_at: failureRecord.completedAt,
@@ -385,9 +466,13 @@ ${resumeText.slice(0, 3000)}
           jobs_discovered: 0,
           new_jobs_found: 0,
           high_match_jobs_count: 0,
+          sources_checked: 0,
+          verified_jobs_count: 0,
+          duplicates_suppressed_count: 0,
           sources_summary: failureRecord.sourcesSummary,
+          source_errors: failureRecord.sourceErrors,
           error_details: errorMessage,
-        });
+        }, { onConflict: 'id' });
         if (historyError) console.warn('Failed scan history persistence warning:', historyError.message);
       } catch (historyError) {
         console.warn('Failed scan history persistence warning:', historyError);
@@ -412,7 +497,9 @@ export async function getUserScanHistory(userId: string, supabaseClient?: any): 
       .from('scan_history')
       .select('*')
       .eq('user_id', userId)
-      .order('started_at', { ascending: false });
+      .gte('started_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .order('started_at', { ascending: false })
+      .limit(100);
     if (error) throw new Error(`Could not load scan history: ${error.message}`);
     return (data || []).map((d: any) => ({
       id: d.id,
@@ -424,11 +511,16 @@ export async function getUserScanHistory(userId: string, supabaseClient?: any): 
       jobsDiscovered: d.jobs_discovered,
       newJobsFound: d.new_jobs_found,
       highMatchJobsCount: d.high_match_jobs_count,
+      sourcesChecked: d.sources_checked || 0,
+      verifiedJobsCount: d.verified_jobs_count || 0,
+      duplicatesSuppressedCount: d.duplicates_suppressed_count || 0,
       sourcesSummary: d.sources_summary,
+      sourceErrors: Array.isArray(d.source_errors) ? d.source_errors : [],
       errorDetails: d.error_details,
     }));
   }
 
   // In-memory history is used only by isolated development/tests without Supabase.
-  return scanHistoryStore.filter((s) => s.userId === userId);
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  return scanHistoryStore.filter((s) => s.userId === userId && Date.parse(s.startedAt) >= cutoff);
 }

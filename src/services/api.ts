@@ -1,4 +1,4 @@
-import { Job, MatchResult, ScanSchedule, Resume, SourceHealth } from '../types';
+import { Job, MatchResult, ScanHistoryEntry, ScanSchedule, Resume, SourceHealth } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -125,6 +125,14 @@ export async function fetchScanSchedule(): Promise<ScanSchedule> {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Failed to fetch schedule (${res.status}).`);
   return body as ScanSchedule;
+}
+
+export async function fetchScanHistoryApi(): Promise<ScanHistoryEntry[]> {
+  const res = await fetch('/api/scan/history', { headers: await getAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to fetch scan history (${res.status}).`);
+  if (!Array.isArray(body)) throw new Error('The backend returned an invalid scan-history response.');
+  return body as ScanHistoryEntry[];
 }
 
 export async function updateScanSchedule(schedule: Partial<ScanSchedule>): Promise<ScanSchedule> {

@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
     <title>Agentic Jobs — AI Job Discovery & Application Tracking</title>
 
@@ -20,11 +20,12 @@
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#07143f" />
+    <meta name="theme-color" content="#10120E" />
 
-    <link rel="canonical" href="https://agenticjobs.dev/" />
+    <link rel="canonical" href="https://agenticjobs.netlify.app/" />
 
     <!-- Agentic Jobs App Icons -->
+    <link rel="icon" type="image/svg+xml" href="/agentic-jobs-mark.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icon.png" />
@@ -39,7 +40,7 @@
         "@context": "https://schema.org",
         "@type": "WebApplication",
         "name": "Agentic Jobs",
-        "url": "https://agenticjobs.dev",
+        "url": "https://agenticjobs.netlify.app",
         "description": "AI-powered job discovery, resume matching, recommendation, and application-tracking platform.",
         "applicationCategory": "BusinessApplication",
         "operatingSystem": "All",
@@ -55,9 +56,20 @@
         ]
       }
     </script>
+    <script>
+      try {
+        const theme = localStorage.getItem('agentic-jobs-theme') === 'light' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        const themeColor = document.querySelector('meta[name="theme-color"]');
+        if (themeColor) themeColor.content = theme === 'dark' ? '#10120E' : '#F3F4EA';
+      } catch {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    </script>
   </head>
 
-  <body class="bg-[#0B0F19] text-slate-100 antialiased selection:bg-violet-500/30 selection:text-violet-200 min-h-screen">
+  <body class="app-shell antialiased min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

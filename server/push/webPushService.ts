@@ -1,4 +1,5 @@
 import webpush from 'web-push';
+import { createECDH } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -8,8 +9,8 @@ const __dirname = path.dirname(__filename);
 const VAPID_FILE = path.join(__dirname, '../data/vapid.json');
 
 // Retrieve or load stable VAPID key pair
-let vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
-let vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+let vapidPublicKey: string | null = process.env.VAPID_PUBLIC_KEY || null;
+let vapidPrivateKey: string | null = process.env.VAPID_PRIVATE_KEY || null;
 const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@agenticjobs.dev';
 
 if (!vapidPublicKey || !vapidPrivateKey) {
@@ -21,12 +22,12 @@ if (!vapidPublicKey || !vapidPrivateKey) {
         vapidPrivateKey = saved.privateKey;
       }
     }
-  } catch (e) {
-    // Local read fallback
+  } catch (error) {
+    console.warn('Could not read the persisted VAPID key pair:', error);
   }
 
-  // Generate and persist once to ensure durable VAPID keys across server restarts
-  if (!vapidPublicKey || !vapidPrivateKey) {
+  // Development may use a local key file; production must use stable configured keys.
+  if ((!vapidPublicKey || !vapidPrivateKey) && process.env.NODE_ENV !== 'production') {
     const generated = webpush.generateVAPIDKeys();
     vapidPublicKey = generated.publicKey;
     vapidPrivateKey = generated.privateKey;
@@ -34,21 +35,27 @@ if (!vapidPublicKey || !vapidPrivateKey) {
       const dataDir = path.dirname(VAPID_FILE);
       if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
       fs.writeFileSync(VAPID_FILE, JSON.stringify(generated, null, 2), 'utf-8');
-    } catch (e) {
-      // ignore write error
+    } catch (error) {
+      console.warn('Could not persist development VAPID keys; they will last only until restart:', error);
     }
   }
 }
 
-// Configure Web Push with VAPID details
-try {
-  webpush.setVapidDetails(
-    vapidSubject,
-    vapidPublicKey,
-    vapidPrivateKey
-  );
-} catch (err) {
-  console.warn('VAPID initialization warning:', err);
+let vapidConfigured = false;
+if (vapidPublicKey && vapidPrivateKey) {
+  try {
+    const ecdh = createECDH('prime256v1');
+    ecdh.setPrivateKey(Buffer.from(vapidPrivateKey, 'base64url'));
+    if (ecdh.getPublicKey('base64url') !== vapidPublicKey) {
+      throw new Error('Configured public and private keys do not form a matching VAPID pair.');
+    }
+    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    vapidConfigured = true;
+  } catch (error) {
+    console.error('VAPID initialization failed:', error);
+  }
+} else if (process.env.NODE_ENV === 'production') {
+  console.error('VAPID is unavailable. Configure a stable VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY pair.');
 }
 
 export interface PushSubscriptionPayload {
@@ -73,8 +80,8 @@ export interface PushNotificationData {
 
 const userSubscriptionsStore = new Map<string, PushSubscriptionPayload[]>();
 
-export function getVapidPublicKey(): string {
-  return vapidPublicKey!;
+export function getVapidPublicKey(): string | null {
+  return vapidConfigured ? vapidPublicKey : null;
 }
 
 export async function saveSubscription(
@@ -82,47 +89,37 @@ export async function saveSubscription(
   subscription: PushSubscriptionPayload,
   supabaseClient?: any
 ) {
-  // Always update in-memory cache
-  const userSubs = userSubscriptionsStore.get(userId) || [];
-  const exists = userSubs.some((s) => s.endpoint === subscription.endpoint);
-  if (!exists) {
-    userSubs.push(subscription);
-    userSubscriptionsStore.set(userId, userSubs);
+  if (supabaseClient) {
+    const { error } = await supabaseClient.from('push_subscriptions').upsert(
+      {
+        user_id: userId,
+        endpoint: subscription.endpoint,
+        p256dh: subscription.keys.p256dh,
+        auth_key: subscription.keys.auth,
+      },
+      { onConflict: 'endpoint' }
+    );
+    if (error) throw new Error(`Could not persist push subscription: ${error.message}`);
   }
 
-  // Persist in Supabase when available
-  if (supabaseClient) {
-    try {
-      await supabaseClient.from('push_subscriptions').upsert(
-        {
-          user_id: userId,
-          endpoint: subscription.endpoint,
-          p256dh: subscription.keys.p256dh,
-          auth_key: subscription.keys.auth,
-        },
-        { onConflict: 'endpoint' }
-      );
-    } catch (err: any) {
-      console.warn('Failed to persist push subscription to Supabase:', err.message);
-    }
-  }
+  const userSubs = userSubscriptionsStore.get(userId) || [];
+  const exists = userSubs.some((s) => s.endpoint === subscription.endpoint);
+  if (!exists) userSubs.push(subscription);
+  userSubscriptionsStore.set(userId, userSubs);
 }
 
 export async function removeSubscription(userId: string, endpoint: string, supabaseClient?: any) {
-  const userSubs = userSubscriptionsStore.get(userId) || [];
-  const filtered = userSubs.filter((s) => s.endpoint !== endpoint);
-  userSubscriptionsStore.set(userId, filtered);
-
   if (supabaseClient) {
-    try {
-      await supabaseClient
-        .from('push_subscriptions')
-        .delete()
-        .eq('endpoint', endpoint);
-    } catch (err: any) {
-      console.warn('Failed to remove push subscription from Supabase:', err.message);
-    }
+    const { error } = await supabaseClient
+      .from('push_subscriptions')
+      .delete()
+      .eq('endpoint', endpoint)
+      .eq('user_id', userId);
+    if (error) throw new Error(`Could not remove push subscription: ${error.message}`);
   }
+
+  const userSubs = userSubscriptionsStore.get(userId) || [];
+  userSubscriptionsStore.set(userId, userSubs.filter((s) => s.endpoint !== endpoint));
 }
 
 export async function sendPushNotificationToUser(
@@ -132,30 +129,20 @@ export async function sendPushNotificationToUser(
 ): Promise<{ sentCount: number; expiredCount: number }> {
   let subscriptions: PushSubscriptionPayload[] = [];
 
-  // Query Supabase first if available
   if (supabaseClient) {
-    try {
-      const { data, error } = await supabaseClient
-        .from('push_subscriptions')
-        .select('endpoint, p256dh, auth_key')
-        .eq('user_id', userId);
-
-      if (!error && data && data.length > 0) {
-        subscriptions = data.map((d: any) => ({
-          endpoint: d.endpoint,
-          keys: {
-            p256dh: d.p256dh,
-            auth: d.auth_key,
-          },
-        }));
-      }
-    } catch (err) {
-      console.warn('Supabase push subscriptions lookup error, using fallback:', err);
-    }
-  }
-
-  // Fallback to in-memory store if no subscriptions found from DB
-  if (subscriptions.length === 0) {
+    const { data, error } = await supabaseClient
+      .from('push_subscriptions')
+      .select('endpoint, p256dh, auth_key')
+      .eq('user_id', userId);
+    if (error) throw new Error(`Could not load push subscriptions: ${error.message}`);
+    subscriptions = (data || []).map((d: any) => ({
+      endpoint: d.endpoint,
+      keys: {
+        p256dh: d.p256dh,
+        auth: d.auth_key,
+      },
+    }));
+  } else {
     subscriptions = userSubscriptionsStore.get(userId) || [];
   }
 
@@ -166,8 +153,8 @@ export async function sendPushNotificationToUser(
     notification: {
       title: notification.title,
       body: notification.message,
-      icon: notification.icon || '/favicon.ico',
-      badge: notification.badge || '/favicon.ico',
+      icon: notification.icon || '/icon-192.png',
+      badge: notification.badge || '/favicon.png',
       data: notification.data || {},
     },
   });

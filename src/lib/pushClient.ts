@@ -27,20 +27,31 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return headers;
 }
 
+let workerRegistrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
+
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return null;
   }
 
-  try {
-    const reg = await navigator.serviceWorker.register('/sw.js', {
-      scope: '/',
-    });
-    return reg;
-  } catch (err) {
-    console.warn('Service Worker registration warning:', err);
-    return null;
+  if (!workerRegistrationPromise) {
+    workerRegistrationPromise = (async () => {
+      try {
+        const existing = await navigator.serviceWorker.getRegistration('/');
+        if (existing) return existing;
+        return await navigator.serviceWorker.register('/sw.js', {
+          scope: '/',
+        });
+      } catch (err) {
+        console.warn('Service Worker registration warning:', err);
+        return null;
+      }
+    })();
   }
+
+  const registration = await workerRegistrationPromise;
+  if (!registration) workerRegistrationPromise = null;
+  return registration;
 }
 
 export async function subscribeUserToWebPush(userId: string): Promise<boolean> {
@@ -52,27 +63,29 @@ export async function subscribeUserToWebPush(userId: string): Promise<boolean> {
     const reg = await registerServiceWorker();
     if (!reg) return false;
 
-    // Fetch public VAPID key from server
-    const keyRes = await fetch('/api/push/vapid-key');
-    if (!keyRes.ok) return false;
-    const { publicKey } = await keyRes.json();
+    const existing = await reg.pushManager.getSubscription();
+    let payload: PushSubscriptionJSON | null = existing ? existing.toJSON() : null;
+    if (!existing) {
+      const keyRes = await fetch('/api/push/vapid-key');
+      if (!keyRes.ok) return false;
+      const { publicKey } = await keyRes.json();
+      const applicationServerKey = urlBase64ToUint8Array(publicKey) as unknown as BufferSource;
 
-    const applicationServerKey = urlBase64ToUint8Array(publicKey) as unknown as BufferSource;
-
-    const subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey,
-    });
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+      payload = subscription.toJSON();
+    }
+    if (!payload?.endpoint || !payload.keys?.p256dh || !payload.keys.auth) return false;
 
     const headers = await getAuthHeader();
-
-    // Send subscription payload to server
     const subRes = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers,
       body: JSON.stringify({
         userId,
-        subscription,
+        subscription: payload,
       }),
     });
 

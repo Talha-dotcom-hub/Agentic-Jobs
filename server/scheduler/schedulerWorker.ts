@@ -1,5 +1,6 @@
 import { executeScheduledUserScan, UserScanConfig, calculateNextScanTime } from './scanEngine.js';
 import { getPersistedResume } from '../resume/resumeManager.js';
+import { randomUUID } from 'node:crypto';
 
 let workerInterval: NodeJS.Timeout | null = null;
 const LOCK_STALE_AFTER_MS = 15 * 60 * 1000;
@@ -22,6 +23,42 @@ function staleLockCutoff(): string {
 
 function retryTime(): string {
   return new Date(Date.now() + DEFAULT_RETRY_DELAY_MS).toISOString();
+}
+
+function sanitizeErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || 'Scan worker failed.');
+  return message
+    .replace(/https?:\/\/[^\s)]+/gi, '[external service]')
+    .replace(/\b(api[_ -]?key|token|authorization)\b(?:\s*[:=]\s*|\s+)[^\s,;]+/gi, '$1=[redacted]')
+    .slice(0, 1000);
+}
+
+async function persistWorkerFailureHistory(
+  supabaseClient: any,
+  userId: string,
+  scanId: string,
+  startedAt: string,
+  message: string,
+): Promise<void> {
+  const completedAt = new Date().toISOString();
+  const { error } = await supabaseClient.from('scan_history').upsert({
+    id: scanId,
+    user_id: userId,
+    started_at: startedAt,
+    completed_at: completedAt,
+    duration_ms: Math.max(0, Date.parse(completedAt) - Date.parse(startedAt)),
+    status: 'failed',
+    jobs_discovered: 0,
+    new_jobs_found: 0,
+    high_match_jobs_count: 0,
+    sources_checked: 0,
+    verified_jobs_count: 0,
+    duplicates_suppressed_count: 0,
+    sources_summary: 'Scan worker failed before completing discovery',
+    source_errors: [message],
+    error_details: message,
+  }, { onConflict: 'id', ignoreDuplicates: true });
+  if (error) console.warn('Could not persist worker failure in scan history:', error.message);
 }
 
 async function claimSchedule(supabaseClient: any, userId: string): Promise<any | null> {
@@ -101,6 +138,7 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
     if (claimRunError || !claimedRun) continue;
 
     let schedule: any = null;
+    const scanStartedAt = nowIso;
     try {
       const { data, error } = await supabaseClient
         .from('scan_schedules')
@@ -146,6 +184,7 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
         nextScanTime: schedule.next_scan_time || nowIso,
         resumeText: resume?.text || '',
         scanKind: 'manual',
+        scanId: run.id,
       };
       const result = await executeScheduledUserScan(config, supabaseClient);
       await releaseSchedule(supabaseClient, schedule, result);
@@ -160,7 +199,13 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
       if (resultSaveError) console.error('Could not persist manual scan result:', resultSaveError.message);
       processed++;
     } catch (error: any) {
-      console.error(`Manual scan run failed for ${run.user_id}:`, error?.message || error);
+      const errorMessage = sanitizeErrorMessage(error);
+      console.error(`Manual scan run failed for ${run.user_id}:`, errorMessage);
+      try {
+        await persistWorkerFailureHistory(supabaseClient, run.user_id, run.id, scanStartedAt, errorMessage);
+      } catch (historyError) {
+        console.warn('Could not record manual scan worker failure:', historyError);
+      }
       if (schedule?.user_id) {
         await supabaseClient.from('scan_schedules').update({
           is_scanning: false,
@@ -172,7 +217,7 @@ async function processQueuedManualScans(supabaseClient: any): Promise<number> {
       }
       await supabaseClient.from('scan_runs').update({
         status: 'failed',
-        error_message: String(error?.message || 'Scan failed.').slice(0, 1000),
+        error_message: errorMessage,
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', run.id).eq('user_id', run.user_id);
@@ -196,6 +241,13 @@ export async function processDueScans(
   let processedUsersCount = 0;
   const nowIso = new Date().toISOString();
   const cutoff = staleLockCutoff();
+  const historyCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { error: pruneError } = await supabaseClient
+    .from('scan_history')
+    .delete()
+    .lt('started_at', historyCutoff);
+  if (pruneError) console.warn('Could not prune expired scan history:', pruneError.message);
+
   try {
     const { data: dueSchedules, error } = await supabaseClient
       .from('scan_schedules')
@@ -208,6 +260,8 @@ export async function processDueScans(
     for (const candidate of dueSchedules || []) {
       const schedule = await claimSchedule(supabaseClient, candidate.user_id);
       if (!schedule) continue;
+      const scanId = randomUUID();
+      const scanStartedAt = new Date().toISOString();
       try {
         const resume = await getPersistedResume(schedule.user_id, supabaseClient);
         const config: UserScanConfig = {
@@ -220,12 +274,19 @@ export async function processDueScans(
           nextScanTime: schedule.next_scan_time || nowIso,
           resumeText: resume?.text || '',
           scanKind: 'scheduled',
+          scanId,
         };
         const result = await executeScheduledUserScan(config, supabaseClient);
         await releaseSchedule(supabaseClient, schedule, result);
         processedUsersCount++;
       } catch (error: any) {
-        console.error(`Scheduled scan failed for user ${schedule.user_id}:`, error?.message || error);
+        const errorMessage = sanitizeErrorMessage(error);
+        console.error(`Scheduled scan failed for user ${schedule.user_id}:`, errorMessage);
+        try {
+          await persistWorkerFailureHistory(supabaseClient, schedule.user_id, scanId, scanStartedAt, errorMessage);
+        } catch (historyError) {
+          console.warn('Could not record scheduled scan worker failure:', historyError);
+        }
         await supabaseClient.from('scan_schedules').update({
           is_scanning: false,
           scan_started_at: null,

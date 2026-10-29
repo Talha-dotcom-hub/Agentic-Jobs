@@ -20,7 +20,7 @@
     <img src="https://img.shields.io/badge/Google_Gemini-AI%20Matching-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Google Gemini" />
     <img src="https://img.shields.io/badge/PDF.js-PDF%20Parsing-E5322D?style=flat-square&logo=adobeacrobatreader&logoColor=white" alt="PDF.js" />
     <img src="https://img.shields.io/badge/PWA-Installable-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA" />
-    <img src="https://img.shields.io/badge/Tests-39%20passed%20locally-16A34A?style=flat-square&logo=checkmarx&logoColor=white" alt="39 tests passed locally" />
+    <img src="https://img.shields.io/badge/Tests-49%20passed%20locally-16A34A?style=flat-square&logo=checkmarx&logoColor=white" alt="49 tests passed locally" />
   </p>
 </div>
 
@@ -72,8 +72,8 @@ The goal is to move beyond a basic job board: after a user configures their prof
 | **Scheduled scanning** | Stores a scan schedule and processes due work on the backend, so a user does not need to keep the browser open. | Requires a continuously available worker or a reliable external scheduler/cron that invokes the protected backend. A schedule setting alone is not a 24/7 guarantee. |
 | **Scan results and history** | Persists discovered opportunities and relevant scan status for later review. | Requires all listed Supabase migrations to be applied to the target project. |
 | **Saved jobs and application tracking** | Helps organize interesting jobs, statuses, notes, and follow-up work. | Persistence should be tested against the configured database before production use. |
-| **Notifications and Web Push** | Supports in-app/scan notifications and browser push where configured. | Web Push requires HTTPS, a service worker, stable VAPID keys, user permission, and a reachable backend. |
-| **Responsive PWA experience** | Provides a responsive interface with installable web-app assets. | Browser and platform install/push support varies. |
+| **Notifications and Web Push** | Supports in-app/scan notifications and browser push where configured. | Web Push requires HTTPS, a service worker, stable VAPID keys, user permission, durable subscription storage, and a reachable backend. Browser, OS, and installed-app behavior vary. |
+| **Responsive PWA experience** | Provides an installable web app with a cached application shell and offline status guidance. | Browser and platform install/push support varies. API responses and private user data are not runtime-cached. |
 | **Separate demo experience** | Allows the UI to be explored with clearly marked sample data. | Demo/sample records are not live jobs and must not be treated as a real user's profile. |
 
 ## 🔄 How the agent works
@@ -97,6 +97,7 @@ flowchart TD
 3. **Configure AI:** add a Gemini key in the product settings. Optional job-provider integrations can be configured separately.
 4. **Choose a schedule:** set the desired frequency and make sure the backend scheduler/cron is deployed and reachable.
 5. **Discover and evaluate:** configured sources return vacancies; matching uses available resume evidence and should keep failed/pending AI evaluations explicit.
+6. **Recommendation threshold:** only validated numeric resume-match scores strictly greater than 85% are included in recommended results; a score of 85%, a missing score, or an invalid score is excluded.
 6. **Review outcomes:** use recommendations, saved jobs, application tracking, history, and notifications to manage next steps.
 
 ## 🧰 Technology stack
@@ -208,6 +209,7 @@ Variable names below are documented in `.env.example`. **Never put backend secre
 | `APIFY_API_TOKEN` | Optional Apify connector credential | **Backend secret only** |
 | `APIFY_ACTOR_ID` | Optional Apify actor selection | Backend config |
 | `RAPIDAPI_KEY` | Optional RapidAPI connector credential | **Backend secret only** |
+| `ENABLE_APPROVED_THIRD_PARTY_JOB_CONNECTORS` | Explicit opt-in for Apify/RapidAPI after provider terms and authorization are verified | Backend config; defaults to `false` |
 | `PORT` | Server port (defaults to `3000`) | Hosting config |
 
 Generate a strong encryption secret locally instead of copying a value from documentation:
@@ -220,7 +222,7 @@ Set the output as `GEMINI_CREDENTIALS_ENCRYPTION_KEY` in the backend environment
 
 ### Bring Your Own Key (BYOK)
 
-For a self-hosted installation, each user/developer can provide their own Gemini key in the app. That keeps normal AI usage associated with the user's Google AI project and its quota. Optional Apify and RapidAPI credentials are separate and are not required for every source. If the operator configures a shared `GEMINI_API_KEY`, it may become a shared fallback and must be protected with rate limits and usage controls.
+For a self-hosted installation, each user/developer can provide their own Gemini key in the app. That keeps normal AI usage associated with the user's Google AI project and its quota. Apify and RapidAPI credentials are optional, but those connectors remain disabled until the operator explicitly opts in after checking provider terms and authorization. If the operator configures a shared `GEMINI_API_KEY`, it may become a shared fallback and must be protected with rate limits and usage controls.
 
 Model fallback can help when an individual model is temporarily limited or unavailable, but it **cannot bypass project-level quota exhaustion, invalid keys, or missing access to a model**.
 
@@ -235,10 +237,13 @@ The repository contains these schema/policy migrations:
 5. `005_harden_account_deletion_rpc.sql`
 6. `20261026_user_gemini_credentials_and_discovered_jobs.sql`
 7. `006_scan_runs_saved_jobs_and_scheduling.sql`
+8. `20261029_scan_history_deduplication.sql`
 
 Apply them in the dependency order appropriate to your migration workflow. For manual SQL Editor setup on a new project, use the numbered base migrations first, then the account-deletion hardening migration, then the Gemini credential/discovered-job migration and scan-run/saved-job migration. Before applying anything to an existing project, inspect the migrations already applied—do not blindly rerun production SQL. Keep the database migration history consistent with your chosen workflow.
 
 The migrations include user profiles, application data, schedules, push subscriptions/history, encrypted per-user Gemini credentials, discovered-job snapshots, scan-run persistence, and hardening for account-deletion RPC permissions. The contents of a migration file do **not** prove it has been applied to a particular live Supabase project.
+
+The latest migration adds scan IDs and observation counts to discovered jobs, idempotency keys to notifications, and rolling 24-hour scan-history retention. The API only returns the last 24 hours; a database trigger prunes expired history on insert, the backend worker prunes during its polling cycle, and a `pg_cron` job is installed when the extension is enabled. Saved jobs and discovered-job records are not removed when scan-history rows expire.
 
 ## 🧪 Run, test, and build
 
@@ -249,7 +254,7 @@ The migrations include user profiles, application data, schedules, push subscrip
 | `npm run build` | Build the frontend and bundle the backend into `server-dist/` |
 | `npx tsx --test tests/*.test.ts` | Run automated test suites |
 
-**Latest recorded local validation (27 Oct 2026):** TypeScript lint/type-check passed, production build passed, and **39 tests passed with 0 failures**. These are local checks, not a guarantee that every live provider, database migration, push subscription, deployment, or scheduled job is configured correctly.
+**Latest local validation (29 Oct 2026):** TypeScript lint/type-check and production build passed, and **49 tests passed with 0 failures**. The production build reports a large JavaScript chunk warning for the existing application bundle. These are local checks, not a guarantee that every live provider, database migration, push subscription, deployment, or scheduled job is configured correctly.
 
 ### Run the built backend
 
@@ -281,6 +286,25 @@ The current `netlify.toml` configures:
 
 Set the public frontend environment variables in Netlify's build environment. Changes to build-time variables require a new frontend deploy.
 
+### PWA installation, updates, and offline behavior
+
+The production build generates the web manifest and Workbox service worker. Static application assets are precached; `/api/*` is excluded from SPA navigation fallback and API responses, authentication state, and private records are not put in a shared runtime cache. When offline, the cached app shell may open and the UI warns that live discovery, AI matching, synchronization, and scans require a connection.
+
+- **Android:** In a supported browser, use the app's Install button or browser menu and choose **Install app** or **Add to Home screen**, if offered. This installs the website as a PWA; it is not an APK.
+- **Chrome and Edge desktop:** Use the Install button or the browser's install control/menu when offered. Ordinary browser access remains available.
+- **iPhone/iPad:** In Safari, use **Share** → **Add to Home Screen**. iOS browsers do not universally expose the Android/Chromium install prompt.
+- **Updates:** The app notifies the user when a service-worker update is ready and waits for an explicit reload action.
+- **Web Push:** Permission is requested only after the user presses the enable button. A browser permission grant is not proof of a server subscription or successful delivery. Closed-app delivery depends on browser, OS, installation state, notification settings, a stable backend VAPID key pair, and an available delivery service; it is not guaranteed on every device.
+- **Job providers:** Remotive public-feed and configured Greenhouse/Lever ATS endpoints are used where available. Apify and RapidAPI connectors are disabled unless `ENABLE_APPROVED_THIRD_PARTY_JOB_CONNECTORS=true` is explicitly set after verifying that provider terms, authorization, and rate limits allow the intended access. No login, CAPTCHA, paywall, or anti-bot controls are bypassed.
+
+For production Web Push, configure a stable matching `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in the backend's secret environment. The backend may use `server/data/vapid.json` for local development, but an ephemeral deployment filesystem is not durable storage for VAPID keys. One way to generate a pair locally is:
+
+```bash
+node -e "console.log(JSON.stringify(require('web-push').generateVAPIDKeys(), null, 2))"
+```
+
+Keep the private key only in the backend secret store. Changing either key invalidates existing browser subscriptions; do not generate a new pair on each deploy. Apply the push-subscription database migration before enabling subscription registration.
+
 ### Backend — Render / Node.js host
 
 The current repository is set up for a separately hosted Express API. A typical Render configuration is:
@@ -290,6 +314,7 @@ The current repository is set up for a separately hosted Express API. A typical 
 - **Environment:** set backend-only secrets in the host dashboard, never in GitHub or frontend variables.
 
 Verify the service URL, CORS/proxy behavior, health endpoint, and logs after deployment. A public `/api/*` proxy does not by itself keep the server alive or schedule scans.
+Backend scans require a continuously available API worker. A sleeping or paused hosting instance cannot guarantee background execution; configure a durable always-on service or external scheduler if the deployment plan does not keep the worker running.
 
 ### Making scheduled scans genuinely autonomous
 

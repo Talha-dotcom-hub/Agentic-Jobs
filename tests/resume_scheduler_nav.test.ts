@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { deriveResumeSearchKeywords, extractDeterministicProfile } from '../server/resume/resumeManager';
 import { calculateNextScanTime, executeScheduledUserScan } from '../server/scheduler/scanEngine';
+import { resolveNotificationDestination } from '../src/lib/notificationNavigation';
 
 describe('Resume Memory, Scheduler Constraints & Push Notification Suite', () => {
   test('Deterministic resume extractor extracts structured profile without fabrication', () => {
@@ -81,5 +82,14 @@ describe('Resume Memory, Scheduler Constraints & Push Notification Suite', () =>
     assert.strictEqual(result.success, false, 'A scan without a real resume must not report success');
     assert.match(result.error || '', /No saved resume/i);
     assert.ok(Date.parse(result.nextScanTime) > now, 'Failure must not immediately retry on the same past schedule time');
+  });
+
+  test('Notification destinations resolve safely to supported views and reject invalid links', () => {
+    assert.strictEqual(resolveNotificationDestination('job-101', 'match'), 'recommended');
+    assert.strictEqual(resolveNotificationDestination('https://example.com/?view=recommended', 'match'), 'recommended');
+    assert.strictEqual(resolveNotificationDestination('https://example.com/?view=dashboard', 'scan'), 'dashboard');
+    assert.strictEqual(resolveNotificationDestination(undefined, 'followup'), 'applications');
+    assert.strictEqual(resolveNotificationDestination('https://evil.example/phish?view=dashboard', 'match'), 'recommended');
+    assert.strictEqual(resolveNotificationDestination('https://example.com/?view=not-real', 'scan'), 'discover');
   });
 });

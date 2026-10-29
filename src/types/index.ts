@@ -17,6 +17,14 @@ export interface Job {
   isStale?: boolean;
   verified?: boolean;
   saved?: boolean;
+  foundInLatestScan?: boolean;
+  seenScanCount?: number;
+  sourceLinks?: Array<{
+    source: string;
+    sourceJobId: string;
+    url: string;
+    verified: boolean;
+  }>;
   matchResult?: MatchResult;
 }
 
@@ -96,6 +104,24 @@ export interface ScanSchedule {
   lastSuccessfulScanJobsCount: number;
   sourceFailuresCount: number;
   status: 'idle' | 'running' | 'completed' | 'error';
+}
+
+export interface ScanHistoryEntry {
+  id: string;
+  userId: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  status: 'completed' | 'failed' | 'rate_limited';
+  jobsDiscovered: number;
+  newJobsFound: number;
+  highMatchJobsCount: number;
+  sourcesChecked: number;
+  verifiedJobsCount: number;
+  duplicatesSuppressedCount: number;
+  sourcesSummary: string;
+  sourceErrors: string[];
+  errorDetails?: string;
 }
 
 export interface SourceHealth {

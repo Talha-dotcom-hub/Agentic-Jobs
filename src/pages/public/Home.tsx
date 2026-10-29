@@ -3,7 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { DeveloperCard } from '../../components/common/DeveloperCard';
 import { TiltCard } from '../../components/common/TiltCard';
-import { motion } from 'framer-motion';
+import heroDashboardPreview from '../../assets/images/hero_dashboard_preview_1792923568924.jpg';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   Sparkles,
   Compass,
@@ -21,6 +22,7 @@ import {
 
 export const Home: React.FC = () => {
   const { setActiveView, enterDemoMode, user, isDemoMode, setUser } = useApp();
+  const reduceMotion = useReducedMotion();
 
   const handleGetStarted = async () => {
     if (user.isAuthenticated || isDemoMode) {
@@ -71,7 +73,7 @@ export const Home: React.FC = () => {
         </div>
 
         <motion.h1
-          initial={{ opacity: 0, y: 20 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-[1.1] max-w-3xl mx-auto"
@@ -83,7 +85,7 @@ export const Home: React.FC = () => {
         </motion.h1>
 
         <motion.p
-          initial={{ opacity: 0, y: 20 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
           className="text-slate-400 text-sm sm:text-base max-w-xl mx-auto leading-relaxed"
@@ -92,7 +94,7 @@ export const Home: React.FC = () => {
         </motion.p>
 
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2"
@@ -108,7 +110,7 @@ export const Home: React.FC = () => {
             onClick={enterDemoMode}
             className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-200 font-semibold transition-colors text-sm flex items-center justify-center gap-2"
           >
-            <span>Launch Live Demo Shell</span>
+            <span>Explore Interactive Demo</span>
           </button>
         </motion.div>
 
@@ -117,12 +119,9 @@ export const Home: React.FC = () => {
         <div className="pt-4 max-w-4xl mx-auto">
           <div className="relative rounded-xl p-1.5 bg-gradient-to-b from-violet-500/10 to-slate-800/20 border border-slate-700/40 shadow-xl overflow-hidden group">
             <img
-              src="/src/assets/images/hero_dashboard_preview_1792923568924.jpg"
+              src={heroDashboardPreview}
               alt="Agentic Jobs SaaS Dashboard Preview"
               className="rounded-lg w-full object-cover shadow-inner group-hover:scale-[1.005] transition-transform duration-500"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
             />
           </div>
         </div>

@@ -3,8 +3,8 @@ import { useApp, ActiveView } from '../../context/AppContext';
 import { GlobalSearchModal } from '../common/GlobalSearchModal';
 import { JobDetailDrawer } from '../jobs/JobDetailDrawer';
 import { PWAInstallButton } from '../common/PWAInstallButton';
+import { BrandMark } from '../common/BrandMark';
 import {
-  Briefcase,
   Menu,
   X,
   User,
@@ -14,6 +14,8 @@ import {
   Search,
   Settings,
   ChevronDown,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -33,6 +35,23 @@ export const Header: React.FC = () => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchJobDrawer, setSearchJobDrawer] = useState<any | null>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
+    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+  );
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = nextTheme;
+    document.documentElement.style.colorScheme = nextTheme;
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeColor) themeColor.content = nextTheme === 'dark' ? '#10120E' : '#F3F4EA';
+    try {
+      localStorage.setItem('agentic-jobs-theme', nextTheme);
+    } catch (error) {
+      console.warn('Theme preference could not be saved:', error);
+    }
+    setTheme(nextTheme);
+  };
 
   useEffect(() => {
     if (mobileMenuOpen) {
@@ -77,7 +96,7 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full bg-[#0B0F19]/90 backdrop-blur-md border-b border-slate-800/80">
+      <header className="app-header sticky top-0 z-40 w-full backdrop-blur-md border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-8">
           {/* Zone 1: Brand Wordmark & Breadcrumb */}
           <div className="flex items-center gap-4 shrink-0">
@@ -85,9 +104,7 @@ export const Header: React.FC = () => {
               onClick={() => setActiveView(user.isAuthenticated ? 'dashboard' : 'home')}
               className="flex items-center gap-2 text-lg font-bold tracking-tight text-white whitespace-nowrap shrink-0 hover:opacity-90 transition-opacity"
             >
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
-                <Briefcase className="w-4 h-4" />
-              </div>
+              <BrandMark className="w-8 h-8 rounded-lg shadow-md shadow-black/20" />
               <span>Agentic Jobs</span>
             </button>
 
@@ -163,6 +180,15 @@ export const Header: React.FC = () => {
 
           {/* Zone 3: Primary Action */}
           <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="theme-toggle"
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
             <PWAInstallButton />
             {user.isAuthenticated ? (
               <div className="flex items-center gap-2 relative">

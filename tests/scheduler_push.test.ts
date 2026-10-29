@@ -37,10 +37,9 @@ describe('Background Scheduler & Web Push Test Suite', () => {
     assert.strictEqual(clampedDaily.toISOString(), '2026-10-30T12:00:00.000Z');
   });
 
-  test('VAPID public key retrieves valid key string', () => {
+  test('VAPID public key is either configured or explicitly unavailable', () => {
     const publicKey = getVapidPublicKey();
-    assert.ok(typeof publicKey === 'string', 'Public key is string');
-    assert.ok(publicKey.length > 10, 'Public key has valid length');
+    assert.ok(publicKey === null || (typeof publicKey === 'string' && publicKey.length > 10));
   });
 
   test('Web Push subscription store manages subscriptions and handles non-existent endpoints safely', async () => {
@@ -62,5 +61,50 @@ describe('Background Scheduler & Web Push Test Suite', () => {
     assert.ok(typeof result.expiredCount === 'number');
 
     removeSubscription(testUserId, sub.endpoint);
+  });
+
+  test('Push subscription storage failures are surfaced instead of reporting registration success', async () => {
+    const sub = {
+      endpoint: 'https://push.example.test/subscription',
+      keys: { p256dh: 'valid-shaped-key', auth: 'auth-value' },
+    };
+    const failingClient = {
+      from: () => ({
+        upsert: async () => ({ error: { message: 'database unavailable' } }),
+      }),
+    };
+
+    await assert.rejects(
+      saveSubscription('user-push-storage-failure', sub, failingClient),
+      /Could not persist push subscription: database unavailable/
+    );
+  });
+
+  test('Push subscription removal is scoped to the owning user and surfaces database failures', async () => {
+    const filters: Array<[string, string]> = [];
+    const failingClient = {
+      from: () => ({
+        delete: () => ({
+          eq: (column: string, value: string) => {
+            filters.push([column, value]);
+            return {
+              eq: async (nextColumn: string, nextValue: string) => {
+                filters.push([nextColumn, nextValue]);
+                return { error: { message: 'delete denied' } };
+              },
+            };
+          },
+        }),
+      }),
+    };
+
+    await assert.rejects(
+      removeSubscription('user-owner', 'https://push.example.test/subscription', failingClient),
+      /Could not remove push subscription: delete denied/
+    );
+    assert.deepEqual(filters, [
+      ['endpoint', 'https://push.example.test/subscription'],
+      ['user_id', 'user-owner'],
+    ]);
   });
 });

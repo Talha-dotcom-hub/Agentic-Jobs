@@ -7,43 +7,50 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss(), VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: [
-  'icon.png',
-  'icon-192.png',
-  'apple-touch-icon.png',
-  'favicon.png',
-],
+        'icon.png',
+        'icon-192.png',
+        'maskable-512.png',
+        'apple-touch-icon.png',
+        'favicon.png',
+        'agentic-jobs-mark.svg',
+      ],
       manifest: {
         id: '/',
         name: 'Agentic Jobs',
-        short_name: 'AgenticJobs',
+        short_name: 'Agentic Jobs',
         description: 'AI-powered job discovery and resume matching.',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#10120E',
+        background_color: '#10120E',
         display: 'standalone',
         start_url: '/',
         scope: '/',
         icons: [
-  {
-    src: '/icon-192.png',
-    sizes: '192x192',
-    type: 'image/png',
-    purpose: 'any',
-  },
-  {
-    src: '/icon.png',
-    sizes: '512x512',
-    type: 'image/png',
-    purpose: 'any',
-  },
-  {
-    src: '/icon.png',
-    sizes: '512x512',
-    type: 'image/png',
-    purpose: 'maskable',
-  },
-],
+          {
+            src: '/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/icon.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+      workbox: {
+        importScripts: ['/push-worker.js'],
+        navigateFallbackDenylist: [/^\/api\//],
       },
       devOptions: {
         enabled: true,

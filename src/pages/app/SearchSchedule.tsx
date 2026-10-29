@@ -1,19 +1,52 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Clock, RefreshCw, CheckCircle2, ShieldCheck, Power } from 'lucide-react';
+import { Clock, RefreshCw, CheckCircle2, Power } from 'lucide-react';
+import { fetchScanHistoryApi } from '../../services/api';
+import { ScanHistoryEntry } from '../../types';
 
 export const SearchSchedule: React.FC = () => {
-  const { schedule, updateSchedule, runScanNow } = useApp();
+  const { schedule, updateSchedule, runScanNow, isDemoMode } = useApp();
 
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [frequencyType, setFrequencyType] = useState<'hourly' | 'daily'>(schedule.frequencyType);
   const [frequencyValue, setFrequencyValue] = useState(schedule.frequencyValue);
+  const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState('');
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
   useEffect(() => {
     setEnabled(schedule.enabled);
     setFrequencyType(schedule.frequencyType);
     setFrequencyValue(schedule.frequencyValue);
   }, [schedule.enabled, schedule.frequencyType, schedule.frequencyValue]);
+
+  useEffect(() => {
+    let active = true;
+    if (isDemoMode) {
+      setScanHistory([]);
+      setHistoryError('');
+      setHistoryLoading(false);
+      return () => { active = false; };
+    }
+
+    setHistoryLoading(true);
+    setHistoryError('');
+    fetchScanHistoryApi()
+      .then((history) => {
+        if (active) setScanHistory(history);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setHistoryError(error instanceof Error ? error.message : 'Could not load recent scan history.');
+        }
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [historyRefresh, isDemoMode, schedule.lastScanTime, schedule.status]);
 
   const handleSaveSchedule = async () => {
     await updateSchedule({
@@ -31,7 +64,7 @@ export const SearchSchedule: React.FC = () => {
           <span>Automated Job Discovery Schedule</span>
         </h1>
         <p className="text-xs text-slate-400">
-          Configure server-side background job discovery intervals across Apify LinkedIn Actors, RapidAPI, and public feeds.
+          Configure backend job discovery intervals. Public feeds and configured employer ATS boards are supported; third-party providers stay disabled until their terms and authorization are confirmed.
         </p>
       </div>
 
@@ -183,6 +216,63 @@ export const SearchSchedule: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6" aria-labelledby="scan-history-heading">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="scan-history-heading" className="text-sm font-semibold text-white">Recent scan history</h2>
+            <p className="mt-1 text-[11px] text-slate-400">Completed and failed attempts from the rolling last 24 hours, shown in your local timezone.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHistoryRefresh((value) => value + 1)}
+            disabled={historyLoading || isDemoMode}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-700 px-3 text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+        </div>
+
+        {isDemoMode ? (
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-slate-400">Live scan history is unavailable in demo mode.</p>
+        ) : historyLoading ? (
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-slate-400" role="status">Loading recent scan history…</p>
+        ) : historyError ? (
+          <p className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 text-rose-200" role="alert">{historyError}</p>
+        ) : scanHistory.length === 0 ? (
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-slate-400">No scan attempts have been recorded in the past 24 hours.</p>
+        ) : (
+          <ol className="space-y-3">
+            {scanHistory.map((entry) => (
+              <li key={entry.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-slate-100">
+                    <CheckCircle2 className={`h-3.5 w-3.5 ${entry.status === 'completed' ? 'text-emerald-400' : 'text-rose-300'}`} />
+                    {entry.status === 'completed' ? 'Completed' : entry.status === 'rate_limited' ? 'Rate limited' : 'Failed'}
+                  </span>
+                  <time className="text-[10px] text-slate-500" dateTime={entry.startedAt}>
+                    {new Date(entry.startedAt).toLocaleString()}
+                  </time>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-300">
+                  {entry.jobsDiscovered} retrieved · {entry.newJobsFound} new · {entry.highMatchJobsCount} matches above 85%
+                </p>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  {entry.sourcesChecked} sources checked · {entry.verifiedJobsCount} source-verified · {entry.duplicatesSuppressedCount} duplicates suppressed
+                </p>
+                <p className="mt-1 break-words text-[10px] text-slate-500">{entry.sourcesSummary}</p>
+                {entry.sourceErrors.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-[10px] text-amber-200">
+                    {entry.sourceErrors.map((sourceError) => <li key={sourceError}>{sourceError}</li>)}
+                  </ul>
+                )}
+                {entry.errorDetails && <p className="mt-2 text-[11px] text-rose-200">{entry.errorDetails}</p>}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </div>
   );
 };

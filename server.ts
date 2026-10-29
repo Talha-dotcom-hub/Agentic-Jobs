@@ -36,7 +36,7 @@ const geminiRateLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 15, 
 const scanRateLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 10, message: 'Scan rate limit exceeded.' });
 const jobAddRateLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 20 });
 
-import { searchAllSources, registeredConnectors } from './server/sources/sourceManager';
+import { searchAllSources, registeredConnectors, isConnectorEnabled } from './server/sources/sourceManager';
 import {
   getVapidPublicKey,
   saveSubscription,
@@ -63,11 +63,13 @@ import {
   createCronAuthMiddleware,
   AuthenticatedRequest,
 } from './server/middleware/auth';
+import { isQualifyingMatchScore } from './shared/matchThreshold';
+import { mergeJobSourceLinks } from './server/sources/jobIdentity';
 
 const requireAuth = createAuthMiddleware(supabase);
 const requireCronAuth = createCronAuthMiddleware();
 
-function mapDiscoveredJobRow(row: any) {
+function mapDiscoveredJobRow(row: any, latestCompletedScanId?: string | null) {
   const score = typeof row.match_score === 'number' ? row.match_score : row.match_score == null ? null : Number(row.match_score);
   const job: any = {
     id: row.job_key,
@@ -88,6 +90,9 @@ function mapDiscoveredJobRow(row: any) {
     verified: row.verified === true,
     isStale: row.is_stale === true,
     saved: false,
+    foundInLatestScan: Boolean(latestCompletedScanId && row.latest_scan_id === latestCompletedScanId),
+    seenScanCount: Number.isInteger(row.seen_scan_count) && row.seen_scan_count > 0 ? row.seen_scan_count : 1,
+    sourceLinks: mergeJobSourceLinks(row.source_links),
   };
   if (job.matchScore !== null) {
     job.matchResult = {
@@ -100,6 +105,20 @@ function mapDiscoveredJobRow(row: any) {
     };
   }
   return job;
+}
+
+async function getLatestCompletedScanId(userId: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from('scan_history')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .gte('started_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`Could not determine the latest completed scan: ${error.message}`);
+  return data?.id || null;
 }
 
 function effectiveGeminiKeyForSharedMode(): string | null {
@@ -165,7 +184,9 @@ app.delete('/api/settings/gemini-key', requireAuth, async (req: AuthenticatedReq
 });
 // Web Push VAPID Public Key Endpoint
 app.get('/api/push/vapid-key', (req, res) => {
-  res.json({ publicKey: getVapidPublicKey() });
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) return res.status(503).json({ error: 'Web Push is not configured on the backend.' });
+  return res.json({ publicKey });
 });
 
 // Web Push Subscribe Endpoint (Authenticated)
@@ -177,8 +198,13 @@ app.post('/api/push/subscribe', requireAuth, async (req: AuthenticatedRequest, r
   if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
     return res.status(400).json({ error: 'A valid Web Push subscription payload is required.' });
   }
-  await saveSubscription(userId, subscription, supabase);
-  res.json({ success: true, message: 'Push subscription registered.' });
+  try {
+    await saveSubscription(userId, subscription, supabase);
+    return res.json({ success: true, message: 'Push subscription registered.' });
+  } catch (error: any) {
+    console.error('Push subscription persistence failed:', error?.message || error);
+    return res.status(503).json({ error: 'Push subscription could not be saved. Check database configuration and retry.' });
+  }
 });
 
 // Web Push Unsubscribe Endpoint (Authenticated)
@@ -188,8 +214,13 @@ app.post('/api/push/unsubscribe', requireAuth, async (req: AuthenticatedRequest,
   if (!userId) return res.status(401).json({ error: 'Authentication required.' });
   if (!supabase) return res.status(503).json({ error: 'Push subscription storage is not configured.' });
   if (typeof endpoint !== 'string' || endpoint.length > 4096) return res.status(400).json({ error: 'A valid endpoint is required.' });
-  await removeSubscription(userId, endpoint, supabase);
-  res.json({ success: true, message: 'Push subscription removed.' });
+  try {
+    await removeSubscription(userId, endpoint, supabase);
+    return res.json({ success: true, message: 'Push subscription removed.' });
+  } catch (error: any) {
+    console.error('Push subscription removal failed:', error?.message || error);
+    return res.status(503).json({ error: 'Push subscription could not be removed.' });
+  }
 });
 
 // Dedicated Account Deletion Endpoint (Authenticated)
@@ -313,10 +344,11 @@ app.get('/api/jobs/discovered', requireAuth, async (req: AuthenticatedRequest, r
   const userId = req.user?.id;
   if (!userId || !supabase) return res.status(503).json({ error: 'Discovered-job storage is not configured.' });
   try {
+    const latestScanId = await getLatestCompletedScanId(userId);
     const { data, error } = await supabase.from('user_discovered_jobs')
       .select('*').eq('user_id', userId).order('last_seen_at', { ascending: false }).limit(200);
     if (error) throw error;
-    return res.json((data || []).map(mapDiscoveredJobRow));
+    return res.json((data || []).map((row: any) => mapDiscoveredJobRow(row, latestScanId)));
   } catch (error: any) {
     console.error('Discovered-job query failed:', error?.message || error);
     return res.status(503).json({ error: 'Could not load discovered jobs. Check the applied Supabase migrations.' });
@@ -327,11 +359,16 @@ app.get('/api/jobs/recommended', requireAuth, async (req: AuthenticatedRequest, 
   const userId = req.user?.id;
   if (!userId || !supabase) return res.status(503).json({ error: 'Recommended-job storage is not configured.' });
   try {
+    const latestScanId = await getLatestCompletedScanId(userId);
     const { data, error } = await supabase.from('user_discovered_jobs')
-      .select('*').eq('user_id', userId).not('match_score', 'is', null)
-      .order('last_seen_at', { ascending: false }).limit(100);
+      .select('*').eq('user_id', userId).gt('match_score', 85)
+      .order('match_score', { ascending: false })
+      .order('last_seen_at', { ascending: false })
+      .limit(100);
     if (error) throw error;
-    return res.json((data || []).map(mapDiscoveredJobRow).filter((job: any) => job.matchScore !== null));
+    return res.json((data || [])
+      .map((row: any) => mapDiscoveredJobRow(row, latestScanId))
+      .filter((job: any) => isQualifyingMatchScore(job.matchScore)));
   } catch (error: any) {
     console.error('Recommended jobs query failed:', error?.message || error);
     return res.status(503).json({ error: 'Could not load recommendations. Check the applied Supabase migrations.' });
@@ -410,7 +447,8 @@ app.get('/api/sources', requireAuth, (req: AuthenticatedRequest, res) => {
     sourceId: c.sourceId,
     displayName: c.displayName,
     apiKeyEnvVar: c.apiKeyEnvVar,
-    isConfigured: c.isConfigured(),
+    isConfigured: c.isConfigured() && isConnectorEnabled(c),
+    enabled: isConnectorEnabled(c),
   }));
   res.json(statuses);
 });
@@ -481,14 +519,27 @@ app.post('/api/gemini/match', requireAuth, geminiRateLimiter, async (req: Authen
       },
     });
     const parsed = JSON.parse(response.text || '{}');
-    const rawScore = Number(parsed.score);
-    if (!Number.isFinite(rawScore) || rawScore < 0 || rawScore > 100 || typeof parsed.summary !== 'string' || !parsed.summary.trim()) {
+    const rawScore = parsed.score;
+    if (
+      typeof rawScore !== 'number' ||
+      !Number.isInteger(rawScore) ||
+      rawScore < 0 ||
+      rawScore > 100 ||
+      typeof parsed.summary !== 'string' ||
+      !parsed.summary.trim() ||
+      !Array.isArray(parsed.matchingEvidence) ||
+      !Array.isArray(parsed.potentialSkillGaps) ||
+      !Array.isArray(parsed.eligibilityWarnings)
+    ) {
       throw new Error('The AI provider returned an invalid match result. No score was saved.');
     }
-    const score = Math.round(rawScore);
-    const matchingEvidence = Array.isArray(parsed.matchingEvidence) ? parsed.matchingEvidence.filter((item: unknown) => typeof item === 'string').slice(0, 12) : [];
-    const potentialSkillGaps = Array.isArray(parsed.potentialSkillGaps) ? parsed.potentialSkillGaps.filter((item: unknown) => typeof item === 'string').slice(0, 12) : [];
-    const eligibilityWarnings = Array.isArray(parsed.eligibilityWarnings) ? parsed.eligibilityWarnings.filter((item: unknown) => typeof item === 'string').slice(0, 12) : [];
+    const score = rawScore;
+    const matchingEvidence = parsed.matchingEvidence.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 12);
+    const potentialSkillGaps = parsed.potentialSkillGaps.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 12);
+    const eligibilityWarnings = parsed.eligibilityWarnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 12);
+    if (isQualifyingMatchScore(score) && matchingEvidence.length === 0) {
+      throw new Error('The AI provider returned a qualifying score without supporting resume evidence. No score was saved.');
+    }
     const evaluatedAt = new Date().toISOString();
     if (fromSavedSnapshot) {
       const updatedSnapshot = {

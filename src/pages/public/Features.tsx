@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
+import { TiltCard } from '../../components/common/TiltCard';
 import {
   Compass,
   Sparkles,
@@ -29,7 +30,8 @@ export const Features: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Feature 1: Multi-Source Job Discovery */}
-        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <TiltCard>
+        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 card-hover-effect">
           <div className="w-10 h-10 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
             <Compass className="w-5 h-5" />
           </div>
@@ -48,9 +50,11 @@ export const Features: React.FC = () => {
             </li>
           </ul>
         </div>
+        </TiltCard>
 
         {/* Feature 2: Google Gemini AI Matching */}
-        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <TiltCard>
+        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 card-hover-effect">
           <div className="w-10 h-10 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
             <Sparkles className="w-5 h-5" />
           </div>
@@ -69,9 +73,11 @@ export const Features: React.FC = () => {
             </li>
           </ul>
         </div>
+        </TiltCard>
 
         {/* Feature 3: Automated Scan Scheduler */}
-        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <TiltCard>
+        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 card-hover-effect">
           <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
             <Clock className="w-5 h-5" />
           </div>
@@ -90,9 +96,11 @@ export const Features: React.FC = () => {
             </li>
           </ul>
         </div>
+        </TiltCard>
 
         {/* Feature 4: Application Tracker & Follow-Ups */}
-        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <TiltCard>
+        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 card-hover-effect">
           <div className="w-10 h-10 rounded-xl bg-amber-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
             <Briefcase className="w-5 h-5" />
           </div>
@@ -111,6 +119,7 @@ export const Features: React.FC = () => {
             </li>
           </ul>
         </div>
+        </TiltCard>
       </div>
 
       <div className="text-center pt-8">

@@ -1,21 +1,19 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { Briefcase, Shield, Lock, Code2 } from 'lucide-react';
-import { InstallPWA } from '../common/InstallPWA';
+import { BrandMark } from '../common/BrandMark';
+import { Shield, Lock, Code2 } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   const { setActiveView } = useApp();
 
   return (
-    <footer className="w-full bg-[#070A12] border-t border-slate-800/80 text-slate-400 py-12 px-4 sm:px-6 lg:px-8">
+    <footer className="app-footer w-full border-t text-slate-400 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pb-12 border-b border-slate-800/60">
           {/* Brand Column */}
           <div className="space-y-4 md:col-span-1">
             <div className="flex items-center gap-2 text-white font-bold text-lg">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-500 flex items-center justify-center text-white">
-                <Briefcase className="w-3.5 h-3.5" />
-              </div>
+              <BrandMark className="w-7 h-7 rounded-lg" />
               <span>Agentic Jobs</span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
@@ -122,7 +120,6 @@ export const Footer: React.FC = () => {
           </div>
         </div>
       </div>
-      <InstallPWA />
     </footer>
   );
 };
