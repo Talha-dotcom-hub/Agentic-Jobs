@@ -19,6 +19,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
+import { useSelectedJob } from '../../hooks/useSelectedJob';
 
 const AnimatedStat: React.FC<{ value: number; disabled: boolean }> = ({ value, disabled }) => {
   const [displayValue, setDisplayValue] = useState(value);
@@ -66,7 +67,7 @@ export const Dashboard: React.FC = () => {
     isDemoMode,
   } = useApp();
 
-  const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const { selectedJob, selectJob, closeJob } = useSelectedJob(jobs, 'dashboard');
 
   const recommendedJobs = jobs.filter((j) => isQualifyingMatchScore(j.matchScore));
   const appliedApps = applications.filter((a) => a.status === 'Applied');
@@ -285,7 +286,7 @@ export const Dashboard: React.FC = () => {
               recommendedJobs.slice(0, 3).map((job) => (
                 <TiltCard key={job.id}>
                   <div
-                    onClick={() => setSelectedJob(job)}
+                    onClick={() => selectJob(job)}
                     className="p-3.5 sm:p-4 rounded-xl bg-slate-900/40 border border-slate-800 hover:border-violet-500/40 cursor-pointer transition-all flex items-center justify-between gap-3 group card-hover-effect"
                   >
                     <div className="space-y-1 min-w-0 flex-1">
@@ -366,7 +367,7 @@ export const Dashboard: React.FC = () => {
       </TiltCard>
 
       {/* Detail Drawer */}
-      <JobDetailDrawer job={selectedJob} onClose={() => setSelectedJob(null)} />
+      <JobDetailDrawer job={selectedJob} onClose={closeJob} />
     </div>
   );
 };

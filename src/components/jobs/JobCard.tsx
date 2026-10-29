@@ -37,8 +37,8 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
 
   return (
     <TiltCard>
-      <div className="group p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 card-hover-effect flex flex-col justify-between gap-4 h-full">
-        <div className="space-y-3">
+      <div className="group min-w-0 p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 card-hover-effect flex flex-col justify-between gap-4 h-full">
+        <div className="min-w-0 space-y-3">
           {/* Top Meta Line: Source & Match Score */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             {/* Unboxed clean metadata text */}
@@ -77,7 +77,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
             >
               {job.title}
             </h3>
-            <p className="text-xs text-slate-400 mt-1 font-medium">
+            <p className="text-xs text-slate-400 mt-1 font-medium break-words">
               {job.company} <span className="text-slate-600">·</span> {job.location}
             </p>
           </div>

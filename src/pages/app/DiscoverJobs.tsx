@@ -1,22 +1,44 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { JobCard } from '../../components/jobs/JobCard';
 import { JobDetailDrawer } from '../../components/jobs/JobDetailDrawer';
 import { AddJobModal } from '../../components/jobs/AddJobModal';
-import { Job } from '../../types';
+import { useSelectedJob } from '../../hooks/useSelectedJob';
 import { Search, Filter, Plus, SlidersHorizontal } from 'lucide-react';
 
 export const DiscoverJobs: React.FC = () => {
   const { jobs } = useApp();
 
+  const getFilterValue = (key: string, fallback: string) =>
+    new URLSearchParams(window.location.search).get(key) || fallback;
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('All');
-  const [selectedWorkplace, setSelectedWorkplace] = useState('All');
-  const [selectedLevel, setSelectedLevel] = useState('All');
-  const [sortBy, setSortBy] = useState<'match' | 'date' | 'title'>('match');
+  const [selectedWorkplace, setSelectedWorkplace] = useState(() => getFilterValue('workplace', 'All'));
+  const [selectedLevel, setSelectedLevel] = useState(() => getFilterValue('level', 'All'));
+  const [sortBy, setSortBy] = useState<'match' | 'date' | 'title'>(() => {
+    const value = getFilterValue('sort', 'match');
+    return value === 'date' || value === 'title' ? value : 'match';
+  });
 
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const { selectedJob, selectJob, closeJob } = useSelectedJob(jobs, 'discover');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const values: Record<string, string> = {
+      workplace: selectedWorkplace,
+      level: selectedLevel,
+      sort: sortBy,
+    };
+    Object.entries(values).forEach(([key, value]) => {
+      if (value && value !== 'All' && !(key === 'sort' && value === 'match')) {
+        url.searchParams.set(key, value);
+      } else {
+        url.searchParams.delete(key);
+      }
+    });
+    url.searchParams.delete('q');
+    window.history.replaceState(window.history.state, '', url);
+  }, [selectedWorkplace, selectedLevel, sortBy]);
 
   // Filter & Search Logic
   const filteredJobs = jobs
@@ -138,13 +160,13 @@ export const DiscoverJobs: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {filteredJobs.map((job) => (
-            <JobCard key={job.id} job={job} onSelectJob={(j) => setSelectedJob(j)} />
+            <JobCard key={job.id} job={job} onSelectJob={selectJob} />
           ))}
         </div>
       )}
 
       {/* Modals */}
-      <JobDetailDrawer job={selectedJob} onClose={() => setSelectedJob(null)} />
+      <JobDetailDrawer job={selectedJob} onClose={closeJob} />
       <AddJobModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
     </div>
   );

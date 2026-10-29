@@ -132,6 +132,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (activeViewRef.current === view) return;
 
     const url = new URL(window.location.href);
+    url.searchParams.delete('job');
     if (view === 'home' || view === 'login' || view === 'signup' || view === 'forgot' || view === 'features' || view === 'about' || view === 'faq' || view === 'contact' || view === 'privacy' || view === 'cookie' || view === 'terms' || view === 'accessibility') {
       url.searchParams.delete('view');
     } else {
@@ -243,23 +244,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const handlePopState = () => {
       const currentView = activeViewRef.current;
+      const stateView = window.history.state?.agenticJobsView as ActiveView | undefined;
+      const queryView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
+      const validViews: ActiveView[] = [
+        'home', 'features', 'about', 'faq', 'contact', 'privacy', 'cookie', 'terms', 'accessibility',
+        'login', 'signup', 'forgot', 'reset-password', 'dashboard', 'discover', 'recommended', 'saved',
+        'resume', 'applications', 'schedule', 'notifications', 'settings',
+      ];
+      const nextView = stateView && validViews.includes(stateView)
+        ? stateView
+        : queryView && validViews.includes(queryView)
+          ? queryView
+          : window.location.pathname === '/reset-password'
+            ? 'reset-password'
+            : 'home';
 
-      // Close the top modal/drawer before leaving the current screen.
-      if (overlaysRef.current.length > 0) {
+      // The URL is the source of truth for both drawer history and forward navigation.
+      if (!new URLSearchParams(window.location.search).has('job') && overlaysRef.current.length > 0) {
         const top = overlaysRef.current.pop();
         if (top) top.closeFn();
-        window.history.pushState({ agenticJobsView: currentView }, '');
-        return;
       }
 
       const stack = viewHistoryRef.current;
-      if (stack.length > 1) {
-        if (stack[stack.length - 1] === currentView) stack.pop();
-        const previousView = stack[stack.length - 1] || 'home';
-        activeViewRef.current = previousView;
-        setActiveViewState(previousView);
+      if (nextView !== currentView) {
+        const existingIndex = stack.lastIndexOf(nextView);
+        if (existingIndex >= 0) stack.splice(existingIndex + 1);
+        else stack.push(nextView);
+        activeViewRef.current = nextView;
+        setActiveViewState(nextView);
       }
-      // At the first screen, allow the platform's normal Back behavior.
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -272,7 +285,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Check pathname and hash for password recovery
     if (window.location.pathname === '/reset-password' || window.location.hash.includes('type=recovery')) {
-      setActiveView('reset-password');
+      activeViewRef.current = 'reset-password';
+      viewHistoryRef.current = ['reset-password'];
+      setActiveViewState('reset-password');
+      window.history.replaceState(
+        { ...(window.history.state || {}), agenticJobsView: 'reset-password' },
+        '',
+        window.location.href
+      );
       return;
     }
 
@@ -285,7 +305,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         'resume', 'applications', 'schedule', 'notifications', 'settings'
       ];
       if (validViews.includes(viewParam as ActiveView)) {
-        setActiveView(viewParam as ActiveView);
+        const requestedView = viewParam as ActiveView;
+        activeViewRef.current = requestedView;
+        viewHistoryRef.current = [requestedView];
+        setActiveViewState(requestedView);
+        window.history.replaceState(
+          { ...(window.history.state || {}), agenticJobsView: requestedView },
+          '',
+          window.location.href
+        );
       }
     }
   }, []);

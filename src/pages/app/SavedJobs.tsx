@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { JobCard } from '../../components/jobs/JobCard';
 import { JobDetailDrawer } from '../../components/jobs/JobDetailDrawer';
-import { Job } from '../../types';
 import { Bookmark } from 'lucide-react';
+import { useSelectedJob } from '../../hooks/useSelectedJob';
 
 export const SavedJobs: React.FC = () => {
   const { jobs, savedJobIds, setActiveView } = useApp();
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const { selectedJob, selectJob, closeJob } = useSelectedJob(jobs, 'saved');
 
   const savedJobsList = jobs.filter((job) => savedJobIds.includes(job.id));
 
@@ -37,12 +37,12 @@ export const SavedJobs: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {savedJobsList.map((job) => (
-            <JobCard key={job.id} job={job} onSelectJob={(j) => setSelectedJob(j)} />
+            <JobCard key={job.id} job={job} onSelectJob={selectJob} />
           ))}
         </div>
       )}
 
-      <JobDetailDrawer job={selectedJob} onClose={() => setSelectedJob(null)} />
+      <JobDetailDrawer job={selectedJob} onClose={closeJob} />
     </div>
   );
 };

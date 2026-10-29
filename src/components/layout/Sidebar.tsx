@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp, ActiveView } from '../../context/AppContext';
 import {
   LayoutDashboard,
@@ -18,7 +18,21 @@ import {
 
 export const Sidebar: React.FC = () => {
   const { activeView, setActiveView, savedJobIds, notifications, schedule, runScanNow } = useApp();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('agentic-jobs-sidebar-collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('agentic-jobs-sidebar-collapsed', String(collapsed));
+    } catch (error) {
+      console.warn('Sidebar preference could not be saved:', error);
+    }
+  }, [collapsed]);
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
   const formatScanTime = (value: string) => {
@@ -41,13 +55,15 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
-      className={`app-sidebar shrink-0 hidden lg:block border-r min-h-[calc(100vh-4rem)] p-3 space-y-5 transition-all duration-300 relative ${
+      className={`app-sidebar sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto shrink-0 hidden lg:block border-r p-3 space-y-5 transition-all duration-300 relative ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
       {/* Collapse Toggle Button */}
       <button
         onClick={() => setCollapsed(!collapsed)}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-expanded={!collapsed}
         className="absolute -right-3 top-6 w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center shadow-lg transition-transform hover:scale-110 z-10"
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >

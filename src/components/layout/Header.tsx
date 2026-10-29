@@ -96,8 +96,8 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="app-header sticky top-0 z-40 w-full backdrop-blur-md border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-8">
+      <header className="app-header sticky top-0 z-[70] isolate w-full backdrop-blur-md border-b">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4 lg:gap-8">
           {/* Zone 1: Brand Wordmark & Breadcrumb */}
           <div className="flex items-center gap-4 shrink-0">
             <button
@@ -105,7 +105,7 @@ export const Header: React.FC = () => {
               className="flex items-center gap-2 text-lg font-bold tracking-tight text-white whitespace-nowrap shrink-0 hover:opacity-90 transition-opacity"
             >
               <BrandMark className="w-8 h-8 rounded-lg shadow-md shadow-black/20" />
-              <span>Agentic Jobs</span>
+              <span className="hidden sm:inline">Agentic Jobs</span>
             </button>
 
             {!isPublicPage && (
@@ -189,7 +189,7 @@ export const Header: React.FC = () => {
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <PWAInstallButton />
+            <div className="hidden md:block"><PWAInstallButton /></div>
             {user.isAuthenticated ? (
               <div className="flex items-center gap-2 relative">
                 <button
@@ -301,6 +301,7 @@ export const Header: React.FC = () => {
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
           <div className="md:hidden border-b border-slate-800 bg-[#0B0F19] px-4 pt-2 pb-4 space-y-2 text-xs">
+            <div className="pb-2"><PWAInstallButton /></div>
             {isPublicPage ? (
               <>
                 <button
@@ -336,6 +337,12 @@ export const Header: React.FC = () => {
               </>
             ) : (
               <>
+                <button
+                  onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}
+                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                >
+                  Switch to {theme === 'dark' ? 'light' : 'dark'} theme
+                </button>
                 <button
                   onClick={() => { setSearchModalOpen(true); setMobileMenuOpen(false); }}
                   className="w-full text-left py-2 text-cyan-400 font-semibold flex items-center gap-2"

@@ -34,17 +34,17 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-[#0B0F19] border-l border-slate-800 h-full overflow-y-auto p-4 sm:p-6 space-y-6 flex flex-col justify-between">
+      <div className="w-full max-w-2xl min-w-0 bg-[#0B0F19] border-l border-slate-800 h-full overflow-y-auto px-4 sm:px-6 pt-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-6 flex flex-col justify-between">
         <div className="space-y-6">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
               <span className="font-semibold text-slate-300">{job.source}</span><span>·</span>
               <span>Posted {job.postedDate ? new Date(job.postedDate).toLocaleDateString() : 'Date not provided'}</span>
             </div>
             <button onClick={onClose} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors" aria-label="Close drawer"><X className="w-5 h-5" /></button>
           </div>
           <div className="space-y-2">
-            <h2 className="text-lg sm:text-xl font-bold text-white leading-snug">{job.title}</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-white leading-snug break-words">{job.title}</h2>
             <div className="flex flex-wrap items-center gap-y-1.5 gap-x-3 sm:gap-x-4 text-xs text-slate-300">
               <span className="flex items-center gap-1"><Building className="w-3.5 h-3.5 text-violet-400" />{job.company}</span>
               <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-cyan-400" />{job.location} ({job.workplaceType})</span>

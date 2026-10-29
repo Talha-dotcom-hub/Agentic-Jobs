@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { JobCard } from '../../components/jobs/JobCard';
 import { JobDetailDrawer } from '../../components/jobs/JobDetailDrawer';
-import { Job } from '../../types';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
 import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
+import { useSelectedJob } from '../../hooks/useSelectedJob';
 
 export const RecommendedJobs: React.FC = () => {
   const { jobs } = useApp();
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const { selectedJob, selectJob, closeJob } = useSelectedJob(jobs, 'recommended');
 
   const recommendedJobs = jobs
     .filter((job) => isQualifyingMatchScore(job.matchScore))
@@ -36,12 +36,12 @@ export const RecommendedJobs: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {recommendedJobs.map((job) => (
-            <JobCard key={job.id} job={job} onSelectJob={(j) => setSelectedJob(j)} />
+            <JobCard key={job.id} job={job} onSelectJob={selectJob} />
           ))}
         </div>
       )}
 
-      <JobDetailDrawer job={selectedJob} onClose={() => setSelectedJob(null)} />
+      <JobDetailDrawer job={selectedJob} onClose={closeJob} />
     </div>
   );
 };

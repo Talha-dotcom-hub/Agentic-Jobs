@@ -127,7 +127,6 @@
 html { scroll-behavior: smooth; }
 body {
   min-width: 320px;
-  overflow-x: hidden;
   background: var(--app-bg);
   color: var(--app-text);
 }
@@ -168,7 +167,11 @@ button, input, select, textarea { font: inherit; }
 body > #root { position: relative; z-index: 1; min-height: 100vh; }
 ::selection { background: rgba(216, 255, 62, 0.32); color: var(--app-text); }
 .app-shell { background: transparent; color: var(--app-text); }
+.app-shell, .app-main, main { min-width: 0; }
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 70;
   background: color-mix(in srgb, var(--app-bg) 88%, transparent);
   border-color: var(--app-border);
 }
