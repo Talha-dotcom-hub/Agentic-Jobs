@@ -96,35 +96,35 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="app-header sticky top-0 z-[70] isolate w-full backdrop-blur-md border-b">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4 lg:gap-8">
+      <header className="app-header sticky top-0 z-[70] isolate w-full bg-surface/85 backdrop-blur-xl border-b border-[#27272A] shadow-[0_1px_8px_rgba(0,0,0,0.35)]">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4 lg:gap-8">
           {/* Zone 1: Brand Wordmark & Breadcrumb */}
           <div className="flex items-center gap-4 shrink-0">
             <button
               onClick={() => setActiveView(user.isAuthenticated ? 'dashboard' : 'home')}
-              className="flex items-center gap-2 text-lg font-bold tracking-tight text-white whitespace-nowrap shrink-0 hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2.5 text-base sm:text-lg font-bold tracking-tight text-on-surface whitespace-nowrap shrink-0 hover:opacity-90 transition-opacity"
             >
-              <BrandMark className="w-8 h-8 rounded-lg shadow-md shadow-black/20" />
-              <span className="hidden sm:inline">Agentic Jobs</span>
+              <BrandMark className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-sm" />
+              <span className="hidden xs:inline font-headline-sm">Agentic Jobs</span>
             </button>
 
             {!isPublicPage && (
-              <div className="hidden xl:flex items-center gap-2 text-xs text-slate-400 pl-4 border-l border-slate-800">
+              <div className="hidden xl:flex items-center gap-2 text-xs font-label-md text-on-surface-variant pl-4 border-l border-[#27272A]">
                 <span>App</span>
                 <span>/</span>
-                <span className="font-semibold text-slate-200">{getViewTitle()}</span>
+                <span className="font-semibold text-on-surface">{getViewTitle()}</span>
               </div>
             )}
           </div>
 
           {/* Zone 2: Navigation Links or Global Search Bar */}
-          <div className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-300">
+          <div className="hidden md:flex items-center gap-6 text-xs font-medium text-on-surface-variant">
             {isPublicPage ? (
               <>
                 <button
                   onClick={() => setActiveView('home')}
                   className={`transition-colors whitespace-nowrap shrink-0 ${
-                    activeView === 'home' ? 'text-violet-400 font-semibold' : 'hover:text-white'
+                    activeView === 'home' ? 'text-primary font-semibold' : 'hover:text-on-surface'
                   }`}
                 >
                   Home
@@ -132,7 +132,7 @@ export const Header: React.FC = () => {
                 <button
                   onClick={() => setActiveView('features')}
                   className={`transition-colors whitespace-nowrap shrink-0 ${
-                    activeView === 'features' ? 'text-violet-400 font-semibold' : 'hover:text-white'
+                    activeView === 'features' ? 'text-primary font-semibold' : 'hover:text-on-surface'
                   }`}
                 >
                   Features
@@ -140,7 +140,7 @@ export const Header: React.FC = () => {
                 <button
                   onClick={() => setActiveView('about')}
                   className={`transition-colors whitespace-nowrap shrink-0 ${
-                    activeView === 'about' ? 'text-violet-400 font-semibold' : 'hover:text-white'
+                    activeView === 'about' ? 'text-primary font-semibold' : 'hover:text-on-surface'
                   }`}
                 >
                   About
@@ -148,7 +148,7 @@ export const Header: React.FC = () => {
                 <button
                   onClick={() => setActiveView('faq')}
                   className={`transition-colors whitespace-nowrap shrink-0 ${
-                    activeView === 'faq' ? 'text-violet-400 font-semibold' : 'hover:text-white'
+                    activeView === 'faq' ? 'text-primary font-semibold' : 'hover:text-on-surface'
                   }`}
                 >
                   FAQ &amp; Help
@@ -156,7 +156,7 @@ export const Header: React.FC = () => {
                 <button
                   onClick={() => setActiveView('contact')}
                   className={`transition-colors whitespace-nowrap shrink-0 ${
-                    activeView === 'contact' ? 'text-violet-400 font-semibold' : 'hover:text-white'
+                    activeView === 'contact' ? 'text-primary font-semibold' : 'hover:text-on-surface'
                   }`}
                 >
                   Support
@@ -165,13 +165,13 @@ export const Header: React.FC = () => {
             ) : (
               <button
                 onClick={() => setSearchModalOpen(true)}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-900 text-xs text-slate-400 transition-colors w-64 justify-between"
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-xs text-on-surface-variant transition-colors w-64 justify-between"
               >
                 <div className="flex items-center gap-2">
-                  <Search className="w-3.5 h-3.5 text-cyan-400" />
+                  <Search className="w-3.5 h-3.5 text-primary" />
                   <span>Search jobs, apps...</span>
                 </div>
-                <kbd className="text-[10px] bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-slate-400 font-mono">
+                <kbd className="text-[10px] font-code-meta bg-surface-container-lowest px-1.5 py-0.5 rounded-[4px] border border-[#27272A] text-on-surface-variant">
                   Ctrl K
                 </kbd>
               </button>
@@ -179,7 +179,7 @@ export const Header: React.FC = () => {
           </div>
 
           {/* Zone 3: Primary Action */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={toggleTheme}
@@ -194,12 +194,12 @@ export const Header: React.FC = () => {
               <div className="flex items-center gap-2 relative">
                 <button
                   onClick={() => setActiveView('notifications')}
-                  className="relative p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60 transition-colors"
+                  className="relative p-2 text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-container transition-colors"
                   title="Notifications"
                 >
                   <Bell className="w-4 h-4" />
                   {unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary animate-pulse" />
                   )}
                 </button>
 
@@ -207,29 +207,29 @@ export const Header: React.FC = () => {
                 <div className="relative">
                   <button
                     onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                    className="flex items-center gap-2 px-2.5 py-1 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800 text-xs text-slate-200 transition-colors"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-xs text-on-surface transition-colors"
                   >
-                    <div className="w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center text-[10px] font-bold text-white">
+                    <div className="w-5 h-5 rounded-full bg-primary-container flex items-center justify-center text-[10px] font-bold text-on-primary-container">
                       {user.name.charAt(0) || 'U'}
                     </div>
                     <span className="hidden sm:inline max-w-[100px] truncate font-medium">{user.name}</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    <ChevronDown className="w-3.5 h-3.5 text-on-surface-variant" />
                   </button>
 
                   {profileDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-[#0B0F19] border border-slate-800 rounded-xl shadow-2xl p-2 space-y-1 z-50 animate-in fade-in duration-150 text-xs">
-                      <div className="p-2 border-b border-slate-800 text-[11px]">
-                        <div className="font-bold text-white">{user.name}</div>
-                        <div className="text-slate-400 truncate">{user.email}</div>
+                    <div className="absolute right-0 mt-2 w-48 bg-surface-container-high border border-[#27272A] rounded-xl shadow-2xl p-2 space-y-1 z-50 animate-in fade-in duration-150 text-xs">
+                      <div className="p-2 border-b border-[#27272A] text-[11px]">
+                        <div className="font-bold text-on-surface">{user.name}</div>
+                        <div className="text-on-surface-variant truncate font-code-meta">{user.email}</div>
                       </div>
                       <button
                         onClick={() => {
                           setActiveView('settings');
                           setProfileDropdownOpen(false);
                         }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 text-left transition-colors"
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container text-left transition-colors"
                       >
-                        <Settings className="w-3.5 h-3.5 text-violet-400" />
+                        <Settings className="w-3.5 h-3.5 text-primary" />
                         <span>Settings</span>
                       </button>
                       <button
@@ -237,9 +237,9 @@ export const Header: React.FC = () => {
                           setActiveView('resume');
                           setProfileDropdownOpen(false);
                         }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 text-left transition-colors"
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container text-left transition-colors"
                       >
-                        <User className="w-3.5 h-3.5 text-cyan-400" />
+                        <User className="w-3.5 h-3.5 text-tertiary" />
                         <span>My Resume</span>
                       </button>
                       <button
@@ -247,7 +247,7 @@ export const Header: React.FC = () => {
                           setProfileDropdownOpen(false);
                           logoutUser();
                         }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-400 hover:bg-rose-950/30 text-left transition-colors pt-1 border-t border-slate-800/60"
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-error hover:bg-error-container/30 text-left transition-colors pt-1 border-t border-[#27272A]"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         <span>Log Out</span>
@@ -258,13 +258,13 @@ export const Header: React.FC = () => {
               </div>
             ) : isDemoMode ? (
               <div className="flex items-center gap-2">
-                <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-[11px] font-semibold text-amber-300">
-                  <Sparkles className="w-3 h-3 text-amber-400" />
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] bg-primary/10 border border-primary/20 text-[11px] font-semibold text-primary">
+                  <Sparkles className="w-3 h-3 text-primary" />
                   <span>Demo Mode</span>
                 </span>
                 <button
                   onClick={exitDemoMode}
-                  className="px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 border border-slate-700/80 rounded-lg transition-colors whitespace-nowrap"
+                  className="px-2.5 py-1.5 text-xs font-semibold text-on-surface bg-surface-container hover:bg-surface-container-high border border-[#27272A] rounded-[6px] transition-colors whitespace-nowrap"
                 >
                   Exit Demo
                 </button>
@@ -273,24 +273,23 @@ export const Header: React.FC = () => {
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
                   onClick={enterDemoMode}
-                  className="hidden sm:inline-flex px-3 py-1.5 text-xs font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors whitespace-nowrap"
+                  className="hidden sm:inline-flex px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/30 rounded-[6px] transition-colors whitespace-nowrap"
                 >
                   Live Demo
                 </button>
                 <button
                   onClick={() => setActiveView('login')}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 rounded-xl shadow-lg shadow-violet-600/20 btn-hover-effect whitespace-nowrap"
+                  className="px-3.5 py-1.5 text-xs font-semibold text-on-primary bg-primary hover:bg-primary-fixed rounded-[6px] shadow-sm transition-colors whitespace-nowrap"
                 >
                   Log In
                 </button>
-
               </div>
             )}
 
             {/* Mobile menu toggle button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-300 hover:text-white"
+              className="md:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-on-surface-variant hover:text-on-surface"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -300,37 +299,37 @@ export const Header: React.FC = () => {
 
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-b border-slate-800 bg-[#0B0F19] px-4 pt-2 pb-4 space-y-2 text-xs">
+          <div className="md:hidden border-b border-[#27272A] bg-surface-container-high px-4 pt-2 pb-4 space-y-2 text-xs">
             <div className="pb-2"><PWAInstallButton /></div>
             {isPublicPage ? (
               <>
                 <button
                   onClick={() => { setActiveView('home'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Home
                 </button>
                 <button
                   onClick={() => { setActiveView('features'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Features
                 </button>
                 <button
                   onClick={() => { setActiveView('about'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   About &amp; Developers
                 </button>
                 <button
                   onClick={() => { setActiveView('faq'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   FAQ &amp; Help
                 </button>
                 <button
                   onClick={() => { setActiveView('contact'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Support
                 </button>
@@ -339,62 +338,62 @@ export const Header: React.FC = () => {
               <>
                 <button
                   onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Switch to {theme === 'dark' ? 'light' : 'dark'} theme
                 </button>
                 <button
                   onClick={() => { setSearchModalOpen(true); setMobileMenuOpen(false); }}
-                  className="w-full text-left py-2 text-cyan-400 font-semibold flex items-center gap-2"
+                  className="w-full text-left py-2 text-primary font-semibold flex items-center gap-2"
                 >
                   <Search className="w-4 h-4" />
                   <span>Quick Search Opportunities</span>
                 </button>
                 <button
                   onClick={() => { setActiveView('dashboard'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Dashboard
                 </button>
                 <button
                   onClick={() => { setActiveView('discover'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Discover Jobs
                 </button>
                 <button
                   onClick={() => { setActiveView('recommended'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Recommended
                 </button>
                 <button
                   onClick={() => { setActiveView('saved'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Saved Jobs
                 </button>
                 <button
                   onClick={() => { setActiveView('resume'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   My Resume
                 </button>
                 <button
                   onClick={() => { setActiveView('applications'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Applications
                 </button>
                 <button
                   onClick={() => { setActiveView('schedule'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Search Schedule
                 </button>
                 <button
                   onClick={() => { setActiveView('settings'); setMobileMenuOpen(false); }}
-                  className="block w-full text-left py-2 text-slate-300 hover:text-white"
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Settings
                 </button>

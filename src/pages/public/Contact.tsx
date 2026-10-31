@@ -47,7 +47,7 @@ export const Contact: React.FC = () => {
               <MessageSquare className="w-4 h-4" />
               <span>Developer Credits</span>
             </div>
-            <p className="text-slate-300">Built by M Talha Iftikhar &amp; Laiba Asif</p>
+            <p className="text-slate-300">Developed by M Talha Iftikhar</p>
             <p className="text-slate-500 text-[11px]">Full-stack SaaS platform.</p>
           </div>
         </div>

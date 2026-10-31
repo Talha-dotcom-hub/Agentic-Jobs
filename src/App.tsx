@@ -49,13 +49,19 @@ const MobileBottomNav: React.FC = () => {
   return (
     <nav aria-label="Main navigation" className="mobile-bottom-nav">
       {items.map(({ view, label, icon: Icon, badge }) => (
-        <button key={view} type="button" onClick={() => setActiveView(view)}
+        <button
+          key={view}
+          type="button"
+          onClick={() => setActiveView(view)}
           aria-current={activeView === view ? 'page' : undefined}
-          className={`mobile-nav-item ${activeView === view ? 'is-active' : ''}`}>
-          <span className="mobile-nav-icon-wrap"><Icon size={19} strokeWidth={activeView === view ? 2.4 : 1.8} />
+          className={`mobile-nav-item ${activeView === view ? 'is-active' : ''}`}
+        >
+          <span className="mobile-nav-icon-wrap">
+            <Icon size={18} strokeWidth={activeView === view ? 2.2 : 1.7} />
             {badge && badge > 0 ? <span className="mobile-nav-badge">{badge}</span> : null}
           </span>
-          <span>{label}</span>
+          <span className="font-label-sm">{label}</span>
+          {activeView === view && <span className="mobile-nav-pip" />}
         </button>
       ))}
     </nav>

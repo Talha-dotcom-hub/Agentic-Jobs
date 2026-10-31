@@ -1,5 +1,4 @@
 import React from 'react';
-import { useApp } from '../../context/AppContext';
 import { Code2, Shield, Bot, Layers } from 'lucide-react';
 
 export const About: React.FC = () => {
@@ -12,33 +11,23 @@ export const About: React.FC = () => {
         </p>
       </div>
 
-      {/* Project Developers Section */}
+      {/* Project Developer Section */}
       <div className="p-8 rounded-2xl bg-gradient-to-br from-violet-950/40 via-slate-900 to-slate-900 border border-violet-500/30 space-y-6">
         <div className="flex items-center gap-2 text-violet-300 font-semibold text-sm">
           <Code2 className="w-5 h-5 text-cyan-400" />
-          <span>Project Developers</span>
+          <span>Project Developer</span>
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed">
-          Agentic Jobs was developed by M Talha Iftikhar and Laiba Asif as a full-stack SaaS application combining React, TypeScript, Express, and Google Gemini SDK integrations.
+          Agentic Jobs was developed by M Talha Iftikhar as a full-stack SaaS application combining React, TypeScript, Express, and Google Gemini SDK integrations.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
-          {/* Developer 1 */}
-          <div className="p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+        <div className="pt-2">
+          <div className="p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 max-w-sm">
             <h3 className="text-base font-bold text-white">M Talha Iftikhar</h3>
-            <p className="text-xs text-violet-300 font-medium">Software Architect &amp; Backend Engineer</p>
+            <p className="text-xs text-violet-300 font-medium">Software Architect &amp; Full-Stack Engineer</p>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Designed the server-side architecture, Express API endpoints, Gemini AI evaluation schemas, and background job scheduling integration.
-            </p>
-          </div>
-
-          {/* Developer 2 */}
-          <div className="p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
-            <h3 className="text-base font-bold text-white">Laiba Asif</h3>
-            <p className="text-xs text-cyan-300 font-medium">Frontend Engineer &amp; UI Designer</p>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Designed and built the responsive glassmorphism UI, interactive job drawer components, application tracker, and dashboard analytics.
+              Designed the server-side architecture, Express API endpoints, Gemini AI evaluation schemas, background job scheduling integration, and the full responsive frontend.
             </p>
           </div>
         </div>

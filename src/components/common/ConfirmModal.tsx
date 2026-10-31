@@ -33,35 +33,39 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-[#0B0F19] border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-          <div className="flex items-center gap-2 text-white font-bold text-sm">
-            <AlertTriangle className={`w-4 h-4 ${confirmVariant === 'rose' ? 'text-rose-400' : 'text-amber-400'}`} />
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-md bg-surface-container-high border border-[#27272A] rounded-xl shadow-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-[#27272A]">
+          <div className="flex items-center gap-2 text-on-surface font-semibold text-sm font-headline-sm">
+            <AlertTriangle className={`w-4 h-4 ${confirmVariant === 'rose' ? 'text-error' : 'text-amber-400'}`} />
             <span>{title}</span>
           </div>
-          <button onClick={onCancel} className="text-slate-400 hover:text-white p-1 rounded-lg">
+          <button
+            onClick={onCancel}
+            className="text-on-surface-variant hover:text-on-surface p-1 rounded-md hover:bg-surface-container"
+            aria-label="Close"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <p className="text-xs text-slate-300 leading-relaxed">{message}</p>
+        <p className="font-body-sm text-xs text-on-surface-variant leading-relaxed">{message}</p>
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-slate-800/80">
+        <div className="flex justify-end gap-2 pt-2 border-t border-[#27272A]">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-xl bg-slate-800 text-xs font-medium text-slate-300 hover:text-white transition-colors"
+            className="px-3.5 py-1.5 rounded-[6px] bg-surface-container hover:bg-surface-container-high border border-[#27272A] text-xs font-label-md font-medium text-on-surface transition-colors"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold text-white transition-colors ${
+            className={`px-3.5 py-1.5 rounded-[6px] text-xs font-label-md font-semibold transition-colors ${
               confirmVariant === 'rose'
-                ? 'bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-600/20'
-                : 'bg-violet-600 hover:bg-violet-500 shadow-md shadow-violet-600/20'
+                ? 'bg-error-container text-on-error-container hover:bg-error-container/80'
+                : 'bg-primary text-on-primary hover:bg-primary-fixed'
             }`}
           >
             {confirmText}

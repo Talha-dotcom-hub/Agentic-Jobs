@@ -68,15 +68,15 @@ export const DiscoverJobs: React.FC = () => {
       {/* Top Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Discover Opportunities</h1>
-          <p className="text-xs text-slate-400">
-            Discover vacancies from configured public feeds and supported employer job boards. Optional third-party integrations may require operator configuration.
+          <h1 className="font-headline-lg text-xl sm:text-2xl font-bold text-on-surface">Discover Opportunities</h1>
+          <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
+            Discover vacancies from configured public feeds and supported employer job boards with deterministic AI telemetry.
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-md shadow-violet-600/20 transition-all flex items-center justify-center gap-1.5 self-start sm:self-auto"
+          className="px-3.5 py-2 rounded-[6px] bg-primary hover:bg-primary-fixed text-on-primary text-xs font-semibold shadow-sm transition-colors flex items-center justify-center gap-1.5 self-start sm:self-auto font-label-md"
         >
           <Plus className="w-4 h-4" />
           <span>Add Custom Job</span>
@@ -84,26 +84,26 @@ export const DiscoverJobs: React.FC = () => {
       </div>
 
       {/* Search & Filter Bar */}
-      <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+      <div className="p-3.5 sm:p-4 rounded-xl bg-surface-container border border-[#27272A] space-y-3">
         <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+          <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 top-3" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by role, company, skill (e.g. TypeScript, React, Express, Remote)..."
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-violet-500"
+            className="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-xs sm:text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:border-primary transition-colors font-body-sm"
           />
         </div>
 
         {/* Segmented Filter Selectors */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-[#27272A] text-xs">
           <div className="flex flex-wrap items-center gap-2">
             {/* Workplace filter */}
             <select
               value={selectedWorkplace}
               onChange={(e) => setSelectedWorkplace(e.target.value)}
-              className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:outline-none"
+              className="h-8 px-2.5 rounded-[6px] bg-surface-container-high border border-[#27272A] text-on-surface text-xs focus:outline-none focus:border-primary font-label-md transition-colors"
             >
               <option value="All">All Workplace Types</option>
               <option value="Remote">Remote Only</option>
@@ -115,7 +115,7 @@ export const DiscoverJobs: React.FC = () => {
             <select
               value={selectedLevel}
               onChange={(e) => setSelectedLevel(e.target.value)}
-              className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:outline-none"
+              className="h-8 px-2.5 rounded-[6px] bg-surface-container-high border border-[#27272A] text-on-surface text-xs focus:outline-none focus:border-primary font-label-md transition-colors"
             >
               <option value="All">All Experience Levels</option>
               <option value="Internship">Internship</option>
@@ -127,12 +127,12 @@ export const DiscoverJobs: React.FC = () => {
 
           {/* Sort selector */}
           <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-slate-400">Sort by:</span>
+            <SlidersHorizontal className="w-3.5 h-3.5 text-on-surface-variant" />
+            <span className="text-on-surface-variant font-label-sm">Sort by:</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs font-medium focus:outline-none"
+              className="h-8 px-2.5 rounded-[6px] bg-surface-container-high border border-[#27272A] text-on-surface text-xs font-medium focus:outline-none focus:border-primary font-label-md transition-colors"
             >
               <option value="match">Gemini Match Score (High First)</option>
               <option value="date">Date Posted (Newest)</option>
@@ -144,21 +144,21 @@ export const DiscoverJobs: React.FC = () => {
 
       {/* Job Cards Grid */}
       {filteredJobs.length === 0 ? (
-        <div className="py-16 text-center space-y-3 bg-slate-900/30 border border-slate-800 rounded-2xl">
-          <p className="text-slate-400 text-xs">No opportunities found matching your current search filters.</p>
+        <div className="py-16 text-center space-y-3 bg-surface-container border border-[#27272A] rounded-xl">
+          <p className="font-body-sm text-on-surface-variant text-xs">No opportunities found matching your current search filters.</p>
           <button
             onClick={() => {
               setSearchTerm('');
               setSelectedWorkplace('All');
               setSelectedLevel('All');
             }}
-            className="px-4 py-2 rounded-xl bg-slate-800 text-xs text-slate-200 hover:text-white"
+            className="px-3.5 py-1.5 rounded-[6px] bg-surface-container-high hover:bg-surface-container-highest border border-[#27272A] text-xs text-on-surface font-label-md transition-colors"
           >
             Reset Filters
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
           {filteredJobs.map((job) => (
             <JobCard key={job.id} job={job} onSelectJob={selectJob} />
           ))}

@@ -176,64 +176,64 @@ export const Settings: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 max-w-3xl">
+    <div className="space-y-6 sm:space-y-8 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <SettingsIcon className="w-6 h-6 text-violet-400" />
+        <h1 className="font-headline-lg text-xl sm:text-2xl font-bold text-on-surface flex items-center gap-2">
+          <SettingsIcon className="w-5 h-5 text-primary" />
           <span>Account &amp; Integration Settings</span>
         </h1>
-        <p className="text-xs text-slate-400">
+        <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
           Manage profile preferences, API integration credentials, and data privacy.
         </p>
       </div>
 
       {/* Account Form */}
-      <form onSubmit={handleSaveProfile} className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-6 text-xs">
+      <form onSubmit={handleSaveProfile} className="p-5 sm:p-6 rounded-xl bg-surface-container border border-[#27272A] space-y-6 text-xs font-body-sm">
         {profileLoadError && !isDemoMode && user.isAuthenticated && (
-          <div role="alert" className="flex items-center justify-between gap-4 rounded-xl border border-rose-800/70 bg-rose-950/30 p-3 text-rose-200">
+          <div role="alert" className="flex items-center justify-between gap-4 rounded-[6px] border border-error/30 bg-error-container/20 p-3 text-error">
             <span>Saved profile settings could not be loaded: {profileLoadError} Your saved values have not been changed.</span>
             <button
               type="button"
               onClick={() => setProfileLoadAttempt((attempt) => attempt + 1)}
-              className="shrink-0 rounded-lg border border-rose-700 px-3 py-1.5 font-semibold hover:bg-rose-900/40"
+              className="shrink-0 rounded-[6px] border border-error/40 px-3 py-1 font-semibold hover:bg-error-container/40"
             >
               Retry
             </button>
           </div>
         )}
         <div className="space-y-4">
-          <h3 className="font-bold text-white flex items-center gap-2 text-sm">
-            <User className="w-4 h-4 text-cyan-400" />
+          <h3 className="font-bold text-on-surface flex items-center gap-2 text-sm font-headline-sm">
+            <User className="w-4 h-4 text-primary" />
             <span>Profile Details</span>
           </h3>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Full Name</label>
+              <label className="block text-on-surface font-medium mb-1 font-label-md">Full Name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+                className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors font-body-sm"
               />
             </div>
 
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Email Address</label>
+              <label className="block text-on-surface font-medium mb-1 font-label-md">Email Address</label>
               <input
                 type="email"
                 value={email}
                 readOnly
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+                className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface-variant focus:outline-none font-code-meta cursor-not-allowed opacity-80"
               />
-              <p className="mt-1 text-[10px] text-slate-500">Email is managed by your sign-in provider and cannot be changed here.</p>
+              <p className="mt-1 text-[10px] font-code-meta text-on-surface-variant/70">Email managed by sign-in provider.</p>
             </div>
           </div>
         </div>
 
-        <div className="space-y-3 pt-4 border-t border-slate-800">
-          <h3 className="font-bold text-white text-sm">Discovery &amp; Notification Preferences</h3>
+        <div className="space-y-3 pt-4 border-t border-[#27272A]">
+          <h3 className="font-bold text-on-surface text-sm font-headline-sm">Discovery &amp; Notification Preferences</h3>
           <PreferenceToggle
             label="High-match alerts"
             description="Create an in-app alert for newly discovered qualifying matches."
@@ -255,66 +255,85 @@ export const Settings: React.FC = () => {
             disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
             onChange={(value) => setPreferences((current) => ({ ...current, pushNotifications: value }))}
           />
-          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-[11px] text-slate-500">
+          <div className="rounded-[6px] border border-[#27272A] bg-surface-container-lowest p-3 text-[11px] font-code-meta text-on-surface-variant/70">
             Email summaries are not available because no email-delivery provider is configured.
           </div>
         </div>
 
         {/* Primary AI credential */}
-        <div className="space-y-4 pt-4 border-t border-slate-800">
-          <h3 className="font-bold text-white flex items-center gap-2 text-sm">
-            <Key className="w-4 h-4 text-violet-400" />
+        <div className="space-y-4 pt-4 border-t border-[#27272A]">
+          <h3 className="font-bold text-on-surface flex items-center gap-2 text-sm font-headline-sm">
+            <Key className="w-4 h-4 text-primary" />
             <span>Primary AI Integration — Google Gemini</span>
           </h3>
-          <p className="text-slate-400 text-[11px] leading-relaxed">
-            Your key is encrypted by the backend and never returned to this page. It is used for resume extraction, matching, and scheduled AI scoring. The app never stores the raw key in browser storage.
+          <p className="text-on-surface-variant text-[11px] font-body-sm leading-relaxed">
+            Your key is encrypted on the backend and used for resume extraction, matching, and scheduled AI scoring.
           </p>
           <div>
-            <label className="block text-slate-300 font-medium mb-1">Gemini API Key</label>
+            <label className="block text-on-surface font-medium mb-1 font-label-md">Gemini API Key</label>
             <input
               type="password"
               autoComplete="new-password"
               value={geminiKey}
               onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder={geminiKeyStatus?.configured ? `Saved key ${geminiKeyStatus.keyHint || '••••'}. Paste a new key to rotate.` : 'Paste your Gemini API key'}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500 font-mono"
+              placeholder={geminiKeyStatus?.configured ? `Saved key ${geminiKeyStatus.keyHint || '••••'}. Paste new key to rotate.` : 'Paste your Gemini API key'}
+              className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary font-mono text-xs"
             />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className={`px-2.5 py-1 rounded border text-[10px] font-bold ${geminiKeyStatus?.configured ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <span className={`px-2.5 py-1 rounded-[4px] border text-[10px] font-code-meta font-semibold ${geminiKeyStatus?.configured ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
                 {geminiKeyStatus?.configured ? `Saved ${geminiKeyStatus.keyHint || ''}` : 'Gemini key required'}
               </span>
-              <button type="button" onClick={handleSaveGeminiKey} disabled={geminiKeyBusy || !geminiKey.trim()} className="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold disabled:opacity-50">
+              <button
+                type="button"
+                onClick={handleSaveGeminiKey}
+                disabled={geminiKeyBusy || !geminiKey.trim()}
+                className="px-3.5 py-1.5 rounded-[6px] bg-primary hover:bg-primary-fixed text-on-primary font-semibold font-label-md text-xs transition-colors disabled:opacity-50"
+              >
                 {geminiKeyBusy ? 'Saving...' : 'Encrypt & Save Key'}
               </button>
-              {geminiKeyStatus?.configured && <button type="button" onClick={handleRemoveGeminiKey} disabled={geminiKeyBusy} className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">Remove Key</button>}
+              {geminiKeyStatus?.configured && (
+                <button
+                  type="button"
+                  onClick={handleRemoveGeminiKey}
+                  disabled={geminiKeyBusy}
+                  className="px-3.5 py-1.5 rounded-[6px] border border-error/30 text-error hover:bg-error-container/20 font-label-md text-xs transition-colors disabled:opacity-50"
+                >
+                  Remove Key
+                </button>
+              )}
             </div>
           </div>
         </div>
-        {/* Optional connectors are configured on the server, not in a user profile. */}
-        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-[11px] text-slate-400 leading-relaxed">
-          <strong className="text-slate-200">Optional job sources:</strong> Apify and RapidAPI are server-managed integrations and do not need personal keys here. Public job feeds and supported employer ATS sources can run independently; an integration is not shown as connected unless the backend reports it configured.
-        </div>        {/* AI Model Preferences */}
-        <div className="space-y-3 pt-4 border-t border-slate-800">
-          <h3 className="font-bold text-white flex items-center gap-2 text-sm">
-            <Cpu className="w-4 h-4 text-emerald-400" />
+
+        {/* Optional connectors */}
+        <div className="p-3.5 rounded-[6px] bg-surface-container-lowest border border-[#27272A] text-[11px] font-code-meta text-on-surface-variant leading-relaxed">
+          <strong className="text-on-surface">Optional job sources:</strong> Apify and RapidAPI are server-managed integrations and do not need personal keys here. Public job feeds and supported employer ATS sources run independently.
+        </div>
+
+        {/* AI Model Preferences */}
+        <div className="space-y-3 pt-4 border-t border-[#27272A]">
+          <h3 className="font-bold text-on-surface flex items-center gap-2 text-sm font-headline-sm">
+            <Cpu className="w-4 h-4 text-tertiary" />
             <span>Automatic AI Model Fallback</span>
           </h3>
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+          <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-[#27272A] space-y-2 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <div className="font-semibold text-white">Gemini model chain</div>
-              <span className={`px-2.5 py-1 rounded border text-[10px] font-bold ${geminiKeyStatus?.configured ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
+              <div className="font-semibold text-on-surface font-label-md">Gemini model chain</div>
+              <span className={`px-2 py-0.5 rounded-[4px] border text-[10px] font-code-meta font-semibold ${geminiKeyStatus?.configured ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
                 {geminiKeyStatus?.configured ? 'Key Saved' : 'Key Needed'}
               </span>
             </div>
-            <div className="text-[11px] text-slate-300 font-mono leading-relaxed">Gemini 3.8 Flash → 3.6 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite → 2.5 Flash*</div>
-            <p className="text-[11px] text-slate-500">*Fallback uses the same API key; it can help with model-specific limits, but cannot bypass a project-wide quota or invalid key. Legacy model access depends on your Google AI project.</p>
-            <p className="text-[11px] text-slate-500">When every eligible model is rate-limited, the scan retains discovered listings and retries AI scoring at a later scheduled run instead of generating fake scores.</p>
+            <div className="text-[11px] text-on-surface-variant font-code-meta leading-relaxed">
+              Gemini 3.8 Flash → 3.6 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite → 2.5 Flash*
+            </div>
           </div>
-        </div><div className="pt-2 flex justify-end">
+        </div>
+
+        <div className="pt-2 flex justify-end">
           <button
             type="submit"
             disabled={profileSaving || !canSaveProfileSettings(isDemoMode, user.id, profileLoadedForUser)}
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-semibold shadow-md shadow-violet-600/20 transition-all disabled:opacity-50"
+            className="px-4 py-2 rounded-[6px] bg-primary hover:bg-primary-fixed text-on-primary font-semibold font-label-md shadow-sm transition-colors disabled:opacity-50"
           >
             {profileSaving ? 'Saving...' : 'Save Preferences'}
           </button>
@@ -322,31 +341,31 @@ export const Settings: React.FC = () => {
       </form>
 
       {/* Data Export & Account Deletion Panel */}
-      <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 text-xs">
-        <h3 className="font-bold text-white text-sm">Data Export &amp; Privacy Control</h3>
+      <div className="p-5 sm:p-6 rounded-xl bg-surface-container border border-[#27272A] space-y-4 text-xs font-body-sm">
+        <h3 className="font-bold text-on-surface text-sm font-headline-sm">Data Export &amp; Privacy Control</h3>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-slate-950 border border-slate-800">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-surface-container-lowest border border-[#27272A]">
           <div>
-            <div className="font-semibold text-white">Download Account Data Package</div>
-            <div className="text-slate-400 text-[11px]">Export saved jobs, applications, and profile JSON</div>
+            <div className="font-semibold text-on-surface font-label-md">Download Account Data Package</div>
+            <div className="text-on-surface-variant text-[11px] font-code-meta">Export saved jobs, applications, and profile JSON</div>
           </div>
           <button
             onClick={handleDownloadData}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+            className="px-3.5 py-1.5 rounded-[6px] bg-surface-container-high hover:bg-surface-container-highest border border-[#27272A] text-on-surface font-label-md transition-colors flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-4 h-4" />
             <span>Export JSON</span>
           </button>
         </div>
 
-        <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 flex items-center justify-between gap-4">
+        <div className="p-4 rounded-xl bg-error-container/10 border border-error/30 flex items-center justify-between gap-4">
           <div>
-            <div className="font-semibold text-rose-300">Delete Account &amp; Resume Data</div>
-            <div className="text-rose-200/80 text-[11px]">Permanently remove resume text and all tracked records</div>
+            <div className="font-semibold text-error font-label-md">Delete Account &amp; Resume Data</div>
+            <div className="text-error/80 text-[11px] font-code-meta">Permanently remove resume text and all tracked records</div>
           </div>
           <button
             onClick={() => setDeleteConfirmOpen(true)}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+            className="px-3.5 py-1.5 rounded-[6px] bg-error-container text-on-error-container hover:bg-error-container/80 font-label-md font-semibold transition-colors flex items-center gap-1.5 shrink-0"
           >
             <Trash2 className="w-4 h-4" />
             <span>Delete Account</span>
@@ -356,19 +375,19 @@ export const Settings: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#0B0F19] border border-rose-500/40 rounded-2xl p-6 space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-rose-400" />
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-surface-container-high border border-error/40 rounded-xl p-5 space-y-4 font-body-sm">
+            <h3 className="text-base font-bold text-on-surface flex items-center gap-2 font-headline-sm">
+              <ShieldAlert className="w-5 h-5 text-error" />
               <span>Confirm Permanent Account Deletion</span>
             </h3>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-on-surface-variant font-body-sm">
               Are you sure you want to delete your account? This action permanently removes your resume, applications, saved jobs, and configuration.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setDeleteConfirmOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-xs text-slate-300 hover:text-white"
+                className="px-3.5 py-1.5 rounded-[6px] bg-surface-container border border-[#27272A] text-xs font-label-md text-on-surface hover:bg-surface-container-high"
               >
                 Cancel
               </button>
@@ -376,7 +395,7 @@ export const Settings: React.FC = () => {
                 type="button"
                 onClick={handleDeleteAccount}
                 disabled={accountDeleteBusy}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-[6px] bg-error-container text-on-error-container text-xs font-semibold font-label-md hover:bg-error-container/80 disabled:opacity-50"
               >
                 {accountDeleteBusy ? 'Deleting...' : 'Permanently Delete'}
               </button>

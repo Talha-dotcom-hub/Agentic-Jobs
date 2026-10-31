@@ -47,49 +47,53 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-[#0B0F19] border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2 text-white font-semibold text-base">
-            <Briefcase className="w-4 h-4 text-cyan-400" />
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-surface-container-high border border-[#27272A] rounded-xl shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
+          <div className="flex items-center gap-2 text-on-surface font-semibold text-base font-headline-sm">
+            <Briefcase className="w-4 h-4 text-primary" />
             <span>{editingApp ? 'Edit Application Record' : 'Track New Application'}</span>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg">
+          <button
+            onClick={onClose}
+            className="text-on-surface-variant hover:text-on-surface p-1 rounded-md hover:bg-surface-container"
+            aria-label="Close"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs font-body-sm">
           <div>
-            <label className="block text-slate-300 font-medium mb-1">Job Title *</label>
+            <label className="block text-on-surface font-medium mb-1 font-label-md">Job Title *</label>
             <input
               type="text"
               required
               value={jobTitle}
               onChange={(e) => setJobTitle(e.target.value)}
               placeholder="e.g. Lead Full Stack Developer"
-              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+              className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Company Name *</label>
+              <label className="block text-on-surface font-medium mb-1 font-label-md">Company Name *</label>
               <input
                 type="text"
                 required
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 placeholder="e.g. Nexus AI Labs"
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+                className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Application Status</label>
+              <label className="block text-on-surface font-medium mb-1 font-label-md">Application Status</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as ApplicationStatus)}
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+                className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors font-label-md"
               >
                 <option value="Applied">Applied</option>
                 <option value="Interview">Interview</option>
@@ -101,60 +105,60 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Target Salary / Comp</label>
+              <label className="block text-on-surface font-medium mb-1 font-label-md">Target Salary / Comp</label>
               <input
                 type="text"
                 value={salary}
                 onChange={(e) => setSalary(e.target.value)}
                 placeholder="e.g. $165,000 / yr"
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+                className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors font-code-score"
               />
             </div>
             <div>
-              <label className="block text-slate-300 font-medium mb-1">Contact Person / Recruiter</label>
+              <label className="block text-on-surface font-medium mb-1 font-label-md">Contact Person / Recruiter</label>
               <input
                 type="text"
                 value={contactPerson}
                 onChange={(e) => setContactPerson(e.target.value)}
                 placeholder="e.g. Sarah Jenkins (Recruiter)"
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+                className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-slate-300 font-medium mb-1">Job Post URL</label>
+            <label className="block text-on-surface font-medium mb-1 font-label-md">Job Post URL</label>
             <input
               type="url"
               value={originalUrl}
               onChange={(e) => setOriginalUrl(e.target.value)}
-              placeholder="https://linkedin.com/jobs/..."
-              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500"
+              placeholder="https://..."
+              className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors font-code-meta"
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 font-medium mb-1">Application Notes</label>
+            <label className="block text-on-surface font-medium mb-1 font-label-md">Application Notes</label>
             <textarea
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add referral notes, interview dates, or preparation points..."
-              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-violet-500 resize-none"
+              className="w-full px-3.5 py-2 bg-surface-container-lowest border border-[#27272A] rounded-[6px] text-on-surface focus:outline-none focus:border-primary transition-colors resize-none"
             />
           </div>
 
-          <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+          <div className="pt-3 border-t border-[#27272A] flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:text-white"
+              className="px-4 py-2 rounded-[6px] bg-surface-container hover:bg-surface-container-high border border-[#27272A] text-on-surface font-label-md transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 text-white font-medium flex items-center gap-1.5 shadow-md shadow-violet-600/20"
+              className="px-4 py-2 rounded-[6px] bg-primary hover:bg-primary-fixed text-on-primary font-semibold font-label-md flex items-center gap-1.5 shadow-sm transition-colors"
             >
               <Check className="w-4 h-4" />
               <span>Save Record</span>

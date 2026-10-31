@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Job } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { Bookmark, ExternalLink, Sparkles, CheckCircle, PlusCircle, Share2, Copy } from 'lucide-react';
-import { TiltCard } from '../common/TiltCard';
+import { Bookmark, ExternalLink, CheckCircle, PlusCircle, Copy, Building } from 'lucide-react';
 import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
 
 interface JobCardProps {
@@ -14,11 +13,16 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
   const { savedJobIds, toggleSaveJob, addApplication, applications, showToast } = useApp();
 
   const isSaved = savedJobIds.includes(job.id);
-  const isAlreadyApplied = applications.some((app) => app.jobId === job.id || app.jobTitle === job.title);
+  const isAlreadyApplied = applications.some(
+    (app) => app.jobId === job.id || app.jobTitle === job.title
+  );
 
   const handleCopyLink = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!job.originalUrl) { showToast('No original job URL is available for this listing.', 'info'); return; }
+    if (!job.originalUrl) {
+      showToast('No original job URL is available for this listing.', 'info');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(job.originalUrl);
       showToast('Original job link copied to clipboard!', 'success');
@@ -27,139 +31,171 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
     }
   };
 
-  const getScoreColor = (score: number | null) => {
-    if (score === null || !Number.isFinite(score)) return 'text-slate-300 bg-slate-500/10 border-slate-500/30';
-    if (score >= 90) return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30';
-    if (isQualifyingMatchScore(score)) return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
-    if (score >= 75) return 'text-violet-300 bg-violet-500/10 border-violet-500/30';
-    return 'text-amber-300 bg-amber-500/10 border-amber-500/30';
+  const getScoreBadgeClass = (score: number | null) => {
+    if (score === null || !Number.isFinite(score)) {
+      return 'text-on-surface-variant bg-surface-container border-[#27272A]';
+    }
+    if (score >= 85 || isQualifyingMatchScore(score)) {
+      return 'text-primary bg-primary/10 border-primary/30';
+    }
+    if (score >= 70) {
+      return 'text-secondary bg-secondary-container/20 border-secondary/30';
+    }
+    return 'text-amber-400 bg-amber-400/10 border-amber-400/30';
   };
 
   return (
-    <TiltCard>
-      <div className="group min-w-0 p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 card-hover-effect flex flex-col justify-between gap-4 h-full">
-        <div className="min-w-0 space-y-3">
-          {/* Top Meta Line: Source & Match Score */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {/* Unboxed clean metadata text */}
-            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-slate-400 flex-wrap">
-              <span className="font-semibold text-slate-300">{job.source}</span>
-              {job.foundInLatestScan && (
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  Found in latest scan
-                </span>
-              )}
-              {job.seenScanCount && job.seenScanCount > 1 && (
-                <span className="text-[10px] text-slate-500">Seen in {job.seenScanCount} scans</span>
-              )}
-              <span aria-hidden="true">·</span>
-              <span>{job.workplaceType}</span>
-              <span aria-hidden="true">·</span>
-              <span>{job.experienceLevel}</span>
-            </div>
+    <div className="group min-w-0 p-4 sm:p-5 rounded-xl bg-surface-container-low border border-[#27272A] card-hover-effect flex flex-col justify-between gap-4 h-full shadow-none relative">
+      <div className="min-w-0 space-y-3">
+        {/* Top Meta Line: Source & Match Score */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 font-code-meta text-xs text-on-surface-variant flex-wrap">
+            <span className="font-semibold text-on-surface uppercase tracking-wider">{job.source}</span>
+            {job.foundInLatestScan && (
+              <span className="rounded-[4px] border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                Found in scan
+              </span>
+            )}
+            {job.seenScanCount && job.seenScanCount > 1 && (
+              <span className="text-[10px] text-on-surface-variant">· {job.seenScanCount} scans</span>
+            )}
+            <span aria-hidden="true">·</span>
+            <span>{job.workplaceType}</span>
+            <span aria-hidden="true">·</span>
+            <span>{job.experienceLevel}</span>
+          </div>
 
-            {/* Match score badge */}
-            <button
-              onClick={() => onSelectJob(job)}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-transform hover:scale-105 ${getScoreColor(job.matchScore)}`}
-              title={job.matchScore === null ? 'No match evaluation exists yet' : 'Click to view the actual AI match evaluation'}
+          {/* Match score badge (Monospace tabular figure as per Stitch DESIGN.md) */}
+          <button
+            onClick={() => onSelectJob(job)}
+            className={`px-2.5 py-1 rounded-[6px] border text-xs font-code-score font-semibold flex items-center gap-1.5 transition-colors tabular-nums ${getScoreBadgeClass(
+              job.matchScore
+            )}`}
+            title={
+              job.matchScore === null
+                ? 'No match evaluation exists yet'
+                : 'Click to view deterministic AI match telemetry'
+            }
+          >
+            <span
+              className="material-symbols-outlined text-[14px]"
+              style={{ fontVariationSettings: "'FILL' 1" }}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{job.matchScore === null ? 'Not scored' : `${job.matchScore}% Match`}</span>
-            </button>
-          </div>
-
-          {/* Title & Company */}
-          <div>
-            <h3
-              onClick={() => onSelectJob(job)}
-              className="text-sm sm:text-base font-semibold text-white group-hover:text-violet-300 transition-colors cursor-pointer leading-snug"
-            >
-              {job.title}
-            </h3>
-            <p className="text-xs text-slate-400 mt-1 font-medium break-words">
-              {job.company} <span className="text-slate-600">·</span> {job.location}
-            </p>
-          </div>
-
-          {/* Salary & Type */}
-          <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-300">
-            {job.salary && <span className="font-semibold text-slate-200">{job.salary}</span>}
-            {job.salary && <span aria-hidden="true" className="text-slate-600">·</span>}
-            <span>{job.type}</span>
-          </div>
-
-          {/* Required Skills Inline List */}
-          <div className="text-xs text-slate-400 leading-normal line-clamp-2">
-            <strong className="text-slate-300 font-medium">Key Requirements: </strong>
-            {job.skillsRequired.length ? job.skillsRequired.join(' · ') : 'Requirements not provided by source'}
-          </div>
+              analytics
+            </span>
+            <span>{job.matchScore === null ? 'Not scored' : `${job.matchScore}% Match`}</span>
+          </button>
         </div>
 
-        {/* Card Actions */}
-        <div className="pt-3 border-t border-slate-800/60 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 text-xs">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Save button */}
+        {/* Title & Company */}
+        <div>
+          <h3
+            onClick={() => onSelectJob(job)}
+            className="font-headline-sm text-sm sm:text-base font-semibold text-on-surface group-hover:text-primary transition-colors cursor-pointer leading-snug"
+          >
+            {job.title}
+          </h3>
+          <p className="font-body-sm text-xs text-on-surface-variant mt-1 font-medium break-words flex items-center gap-1.5">
+            <Building className="w-3.5 h-3.5 text-on-surface-variant/70 shrink-0" />
+            <span>{job.company}</span>
+            <span className="text-on-surface-variant/50">·</span>
+            <span>{job.location}</span>
+          </p>
+        </div>
+
+        {/* Salary & Type Chips */}
+        <div className="flex flex-wrap items-center gap-2 font-code-meta text-xs text-on-surface">
+          {job.salary && (
+            <span className="font-code-score font-semibold text-primary tabular-nums px-2 py-0.5 bg-surface-container rounded-[4px] border border-primary/20">
+              {job.salary}
+            </span>
+          )}
+          <span className="px-2 py-0.5 bg-surface-container rounded-[4px] border border-[#27272A] text-on-surface-variant">
+            {job.type}
+          </span>
+        </div>
+
+        {/* Required Skills Inline List */}
+        <div className="font-body-sm text-xs text-on-surface-variant leading-normal line-clamp-2">
+          <strong className="text-on-surface font-medium font-label-sm">Key Requirements: </strong>
+          {job.skillsRequired.length
+            ? job.skillsRequired.join(' · ')
+            : 'Requirements synthesized from employer ATS specification.'}
+        </div>
+      </div>
+
+      {/* Card Actions Footer */}
+      <div className="pt-3 border-t border-[#27272A] flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-1.5">
+          {/* Save button */}
+          <button
+            onClick={() => toggleSaveJob(job.id)}
+            className={`p-2 min-h-[34px] min-w-[34px] flex items-center justify-center rounded-[6px] border transition-colors ${
+              isSaved
+                ? 'bg-primary/10 border-primary/30 text-primary'
+                : 'border-[#27272A] bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface'
+            }`}
+            title={isSaved ? 'Saved in pipeline' : 'Save opportunity'}
+            aria-label={isSaved ? 'Saved' : 'Save opportunity'}
+          >
+            <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-primary' : ''}`} />
+          </button>
+
+          {/* Copy link */}
+          <button
+            onClick={handleCopyLink}
+            className="p-2 min-h-[34px] min-w-[34px] flex items-center justify-center rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors"
+            title="Copy original job link"
+            aria-label="Copy job link"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+
+          {/* View match details */}
+          <button
+            onClick={() => onSelectJob(job)}
+            className="px-2.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors font-label-sm"
+          >
+            AI Analysis
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto sm:ml-0">
+          {/* Track application button */}
+          {isAlreadyApplied ? (
+            <span className="px-2.5 py-1.5 rounded-[6px] bg-primary/10 border border-primary/20 text-primary font-label-sm font-medium flex items-center gap-1">
+              <CheckCircle className="w-3.5 h-3.5" /> Applied
+            </span>
+          ) : (
             <button
-              onClick={() => toggleSaveJob(job.id)}
-              className={`p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border transition-colors ${
-                isSaved
-                  ? 'bg-violet-600/20 border-violet-500/50 text-violet-300'
-                  : 'border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200'
-              }`}
-              title={isSaved ? 'Saved' : 'Save Job'}
+              onClick={() =>
+                addApplication({
+                  jobId: job.id,
+                  jobTitle: job.title,
+                  company: job.company,
+                  originalUrl: job.originalUrl,
+                })
+              }
+              className="px-2.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors flex items-center gap-1 font-label-sm"
             >
-              <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-violet-400' : ''}`} />
+              <PlusCircle className="w-3.5 h-3.5 text-secondary" /> Track
             </button>
+          )}
 
-            {/* Copy link */}
-            <button
-              onClick={handleCopyLink}
-              className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
-              title="Copy post link"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
-
-            {/* View match details */}
-            <button
-              onClick={() => onSelectJob(job)}
-              className="px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-800/40 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors text-[11px] sm:text-xs"
-            >
-              AI Analysis
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 ml-auto sm:ml-0">
-            {/* Track application button */}
-            {isAlreadyApplied ? (
-              <span className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium flex items-center gap-1">
-                <CheckCircle className="w-3.5 h-3.5" /> Applied
-              </span>
-            ) : (
-              <button
-                onClick={() => addApplication({ jobId: job.id, jobTitle: job.title, company: job.company, originalUrl: job.originalUrl })}
-                className="px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors flex items-center gap-1 text-[11px] sm:text-xs"
-              >
-                <PlusCircle className="w-3.5 h-3.5 text-cyan-400" /> Track
-              </button>
-            )}
-
-            {/* External original job post link */}
-            {job.originalUrl && (
+          {/* External original job post link */}
+          {job.originalUrl && (
             <a
               href={job.originalUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 sm:px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-semibold text-[11px] sm:text-xs shadow-sm transition-all flex items-center gap-1 shrink-0"
+              className="px-3 py-1.5 rounded-[6px] bg-primary hover:bg-primary-fixed text-on-primary font-semibold font-label-sm shadow-sm transition-colors flex items-center gap-1 shrink-0"
             >
               <span>Apply</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3 h-3" />
             </a>
-            )}
-          </div>
+          )}
         </div>
       </div>
-    </TiltCard>
+    </div>
   );
 };

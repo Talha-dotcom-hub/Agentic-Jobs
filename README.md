@@ -405,16 +405,11 @@ Agentic-Jobs/
 <div align="center">
   <table>
     <tr>
-      <td align="center" width="50%">
+      <td align="center" width="100%">
         <strong>M Talha Iftikhar</strong><br />
-        <sub>Project developer</sub><br /><br />
+        <sub>Project developer &amp; Software Architect</sub><br /><br />
         <a href="https://github.com/Talha-dotcom-hub"><img src="https://img.shields.io/badge/GitHub-Talha--dotcom--hub-181717?style=flat-square&logo=github&logoColor=white" alt="Talha GitHub" /></a>
         <a href="https://www.linkedin.com/in/talha-dev-pk"><img src="https://img.shields.io/badge/LinkedIn-Profile-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="Talha LinkedIn" /></a>
-      </td>
-      <td align="center" width="50%">
-        <strong>Laiba Asif</strong><br />
-        <sub>Project developer</sub><br /><br />
-        <a href="https://github.com/labii9412-cloud"><img src="https://img.shields.io/badge/GitHub-labii9412--cloud-181717?style=flat-square&logo=github&logoColor=white" alt="Laiba GitHub" /></a>
       </td>
     </tr>
   </table>
