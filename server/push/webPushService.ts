@@ -100,6 +100,7 @@ export async function saveSubscription(
       { onConflict: 'endpoint' }
     );
     if (error) throw new Error(`Could not persist push subscription: ${error.message}`);
+    return;
   }
 
   const userSubs = userSubscriptionsStore.get(userId) || [];
@@ -116,6 +117,7 @@ export async function removeSubscription(userId: string, endpoint: string, supab
       .eq('endpoint', endpoint)
       .eq('user_id', userId);
     if (error) throw new Error(`Could not remove push subscription: ${error.message}`);
+    return;
   }
 
   const userSubs = userSubscriptionsStore.get(userId) || [];
