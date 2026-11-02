@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { TiltCard } from '../../components/common/TiltCard';
@@ -17,10 +17,10 @@ import {
   Cpu,
 } from 'lucide-react';
 
-// ── Scroll Reveal Hook ──────────────────────────────────────────────────────
+// â”€â”€ Scroll Reveal Hook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function useScrollReveal<T extends HTMLElement>(
   threshold = 0.12
-): React.RefObject<T> {
+): React.RefObject<T | null> {
   const ref = useRef<T>(null);
 
   useEffect(() => {
@@ -56,8 +56,8 @@ function useScrollReveal<T extends HTMLElement>(
   return ref;
 }
 
-// ── Staggered children reveal ────────────────────────────────────────────────
-function useStaggerReveal<T extends HTMLElement>(count: number, baseDelay = 80): React.RefObject<T> {
+// â”€â”€ Staggered children reveal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function useStaggerReveal<T extends HTMLElement>(count: number, baseDelay = 80): React.RefObject<T | null> {
   const ref = useRef<T>(null);
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export const Home: React.FC = () => {
   return (
     <div className="space-y-24 pb-20">
 
-      {/* ── Hero Section ─────────────────────────────────────────────────── */}
+      {/* â”€â”€ Hero Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section
         ref={heroRef}
         className="relative pt-8 lg:pt-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center space-y-7"
@@ -161,7 +161,7 @@ export const Home: React.FC = () => {
         {/* Category badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#84CC16]/10 border border-[#84CC16]/25 text-[10px] sm:text-xs font-semibold text-[#84CC16]">
           <Cpu className="w-3 h-3" />
-          <span>Google Gemini · Agentic Intelligence · Resume-Aware Discovery</span>
+          <span>Google Gemini Â· Agentic Intelligence Â· Resume-Aware Discovery</span>
         </div>
 
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-[1.1] max-w-3xl mx-auto">
@@ -206,7 +206,7 @@ export const Home: React.FC = () => {
       </section>
 
 
-      {/* ── How It Works ─────────────────────────────────────────────────── */}
+      {/* â”€â”€ How It Works â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section
         ref={howItWorksRef}
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12"
@@ -235,7 +235,7 @@ export const Home: React.FC = () => {
             </div>
             <h3 className="text-base font-semibold text-white">2. Gemini AI Resume Matching</h3>
             <p className="text-xs text-[#A1A1AA] leading-relaxed">
-              Google Gemini evaluates job descriptions against your resume text, delivering 0–100 match scores, evidence list, and cautious gap notes.
+              Google Gemini evaluates job descriptions against your resume text, delivering 0â€“100 match scores, evidence list, and cautious gap notes.
             </p>
           </div>
 
@@ -252,7 +252,7 @@ export const Home: React.FC = () => {
       </section>
 
 
-      {/* ── Key Features Grid ────────────────────────────────────────────── */}
+      {/* â”€â”€ Key Features Grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section
         ref={featuresRef}
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8"
@@ -266,10 +266,10 @@ export const Home: React.FC = () => {
           <TiltCard>
             <div className="p-5 rounded-xl bg-[#141416] border border-[#27272A] hover:border-[#3F3F46] transition-colors space-y-2.5 h-full">
               <div className="text-[#84CC16] font-bold flex items-center gap-2">
-                <Sparkles className="w-4 h-4" /> Recommended Matches &gt;85%
+                <Sparkles className="w-4 h-4" /> Recommended Matches â‰¥85%
               </div>
               <p className="text-[#A1A1AA] leading-relaxed">
-                Automatically filter jobs scoring above 85% match accuracy with detailed evidence highlights and potential gap notes.
+                Automatically filter jobs scoring 85% or higher match accuracy with detailed evidence highlights and potential gap notes.
               </p>
             </div>
           </TiltCard>
@@ -332,7 +332,7 @@ export const Home: React.FC = () => {
       </section>
 
 
-      {/* ── Developer Credit ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Developer Credit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section
         ref={developerRef}
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
@@ -360,7 +360,7 @@ export const Home: React.FC = () => {
       </section>
 
 
-      {/* ── CTA Section ──────────────────────────────────────────────────── */}
+      {/* â”€â”€ CTA Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section
         ref={ctaRef}
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
@@ -391,3 +391,4 @@ export const Home: React.FC = () => {
     </div>
   );
 };
+

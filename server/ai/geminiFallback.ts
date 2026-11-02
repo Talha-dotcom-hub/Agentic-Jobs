@@ -9,6 +9,29 @@ export const GEMINI_FALLBACK_MODELS = [
   'gemini-2.5-flash',
 ] as const;
 
+export async function validateGeminiApiKey(
+  apiKey: string,
+  modelLookup?: (model: string) => Promise<unknown>,
+): Promise<string> {
+  if (!apiKey?.trim()) throw new Error('A Gemini API key is required.');
+  const lookup = modelLookup || (async (modelName: string) => {
+    const ai = new GoogleGenAI({ apiKey });
+    return ai.models.get({ model: modelName });
+  });
+  let lastNotFound: any;
+  for (const model of GEMINI_FALLBACK_MODELS) {
+    try {
+      await lookup(model);
+      return model;
+    } catch (error: any) {
+      const status = Number(error?.status ?? error?.code ?? error?.error?.code ?? 0);
+      if (status !== 404) throw error;
+      lastNotFound = error;
+    }
+  }
+  throw lastNotFound || new Error('No supported Gemini model is available for this key.');
+}
+
 export class GeminiFallbackExhaustedError extends Error {
   constructor(message: string) {
     super(message);

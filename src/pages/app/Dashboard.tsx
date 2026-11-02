@@ -186,7 +186,7 @@ export const Dashboard: React.FC = () => {
           <div className="text-xl sm:text-2xl font-code-score font-bold text-primary tabular-nums">
             <AnimatedStat value={recommendedJobs.length} disabled={isDemoMode} />
           </div>
-          <div className="text-[11px] font-code-meta text-on-surface-variant truncate">&gt;85% match score</div>
+          <div className="text-[11px] font-code-meta text-on-surface-variant truncate">≥85% match score</div>
         </button>
 
         <button

@@ -4,6 +4,7 @@ import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
+import { isSupabaseConfigured } from './lib/supabase';
 
 // Public Pages
 import { Home } from './pages/public/Home';
@@ -204,6 +205,20 @@ const MainContent: React.FC = () => {
         return <NotFound />;
     }
   };
+
+  if (isSupabaseConfigured && !authReady) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-background px-6 text-on-surface" role="status" aria-live="polite">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <span className="h-10 w-10 rounded-full border-2 border-primary/25 border-t-primary motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <div className="space-y-1">
+            <h1 className="text-sm font-semibold">Restoring your session</h1>
+            <p className="text-xs text-on-surface-variant">Checking your secure sign-in before loading your workspace.</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="app-shell min-h-screen flex flex-col font-sans">

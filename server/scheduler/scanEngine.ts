@@ -30,7 +30,7 @@ export interface ScanHistoryRecord {
   startedAt: string;
   completedAt: string;
   durationMs: number;
-  status: 'completed' | 'failed' | 'rate_limited';
+  status: 'completed' | 'partial' | 'failed' | 'rate_limited';
   jobsDiscovered: number;
   newJobsFound: number;
   highMatchJobsCount: number;
@@ -82,7 +82,9 @@ export async function executeScheduledUserScan(
   aiScoringExhausted?: boolean;
   aiScoringError?: string;
   scoredJobsCount?: number;
+  matchScoringComplete?: boolean;
   sourceFailuresCount?: number;
+  sourceErrors?: string[];
   error?: string;
 }> {
   const startTime = Date.now();
@@ -369,12 +371,31 @@ ${resumeText.slice(0, 3000)}
     if (quotaExhaustedForThisScan) {
       console.warn(`AI scoring paused for user ${config.userId} after fallback exhaustion; job discovery results were retained without fabricated scores.`);
     }
-    const completionTitle = config.scanKind === 'manual'
-      ? 'Job Scan completed, Click To View Results'
-      : 'Scheduled Scan completed, Click To View Results';
+    const aiScoringComplete = Boolean(resumeText && activeGeminiKey) &&
+      matchByUrl.size === discoveredJobs.length && !aiScoringError && !quotaExhaustedForThisScan;
+    // A definitive 85% no-match result requires every configured source and every returned
+    // candidate to have completed. Otherwise only a partial-discovery/scoring message is safe.
+    const matchScoringComplete = aiScoringComplete && sourceErrors.length === 0;
+    const sourcePartialMessage = sourceErrors.length > 0
+      ? ` Configured source failures: ${sourceErrors.join('; ')}. Discovery may be partial.`
+      : '';
+    const completionTitle = matchScoringComplete
+      ? (highMatchesCount > 0 ? 'Matching jobs are ready' : 'Resume matching scan completed')
+      : sourceErrors.length > 0
+        ? 'Partial job discovery results'
+        : !activeGeminiKey ? 'Job discovery completed' : 'Resume matching incomplete';
+    const completionMessage = matchScoringComplete
+      ? (highMatchesCount > 0
+        ? `${highMatchesCount} job${highMatchesCount === 1 ? '' : 's'} scored 85% or higher against your resume and are ready to review.`
+        : 'Scan completed. No job matches found according to your resume with an 85% or higher match score.')
+      : `Partial scan: ${discoveredJobs.length} jobs discovered. ${!activeGeminiKey
+        ? 'Resume matching was not run because a personal Gemini API key is not configured.'
+        : aiScoringComplete
+          ? 'All returned jobs were scored, but not all configured sources responded; no definitive 85% no-match result is available.'
+          : `Resume matching scored ${matchByUrl.size} of ${discoveredJobs.length} returned jobs; no definitive 85% no-match result is available.`}${sourcePartialMessage}`;
     const completionNotification = {
       title: completionTitle,
-      message: completionTitle,
+      message: completionMessage,
       data: { url: '/?view=recommended', category: 'scan' as const },
     };
     let shouldSendCompletionPush = false;
@@ -411,7 +432,7 @@ ${resumeText.slice(0, 3000)}
       startedAt: new Date(startTime).toISOString(),
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startTime,
-      status: 'completed',
+      status: matchScoringComplete ? 'completed' : 'partial',
       jobsDiscovered: discoveredJobs.length,
       newJobsFound: newlyFoundCount,
       highMatchJobsCount: highMatchesCount,
@@ -461,7 +482,9 @@ ${resumeText.slice(0, 3000)}
       aiScoringExhausted: quotaExhaustedForThisScan,
       aiScoringError,
       scoredJobsCount: matchByUrl.size,
+      matchScoringComplete,
       sourceFailuresCount: searchResult.sourceStatuses.filter((source) => source.isConfigured && !source.success).length,
+      sourceErrors,
     };
   } catch (err: any) {
     const errorMessage = safeErrorSummary(String(err?.message || 'Scheduled scan execution error'));

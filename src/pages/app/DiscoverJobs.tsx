@@ -11,7 +11,7 @@ export const DiscoverJobs: React.FC = () => {
 
   const getFilterValue = (key: string, fallback: string) =>
     new URLSearchParams(window.location.search).get(key) || fallback;
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => getFilterValue('q', '').slice(0, 120));
   const [selectedWorkplace, setSelectedWorkplace] = useState(() => getFilterValue('workplace', 'All'));
   const [selectedLevel, setSelectedLevel] = useState(() => getFilterValue('level', 'All'));
   const [sortBy, setSortBy] = useState<'match' | 'date' | 'title'>(() => {
@@ -25,6 +25,7 @@ export const DiscoverJobs: React.FC = () => {
   useEffect(() => {
     const url = new URL(window.location.href);
     const values: Record<string, string> = {
+      q: searchTerm.trim(),
       workplace: selectedWorkplace,
       level: selectedLevel,
       sort: sortBy,
@@ -36,9 +37,8 @@ export const DiscoverJobs: React.FC = () => {
         url.searchParams.delete(key);
       }
     });
-    url.searchParams.delete('q');
     window.history.replaceState(window.history.state, '', url);
-  }, [selectedWorkplace, selectedLevel, sortBy]);
+  }, [searchTerm, selectedWorkplace, selectedLevel, sortBy]);
 
   // Filter & Search Logic
   const filteredJobs = jobs
@@ -89,6 +89,7 @@ export const DiscoverJobs: React.FC = () => {
           <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 top-3" />
           <input
             type="text"
+            maxLength={120}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by role, company, skill (e.g. TypeScript, React, Express, Remote)..."

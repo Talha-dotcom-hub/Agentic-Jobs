@@ -60,6 +60,7 @@ import {
 import { initSchedulerWorker, processDueScans } from './server/scheduler/schedulerWorker';
 import { generateWithGeminiFallback } from './server/ai/geminiFallback';
 import { encryptGeminiApiKey, getUserGeminiApiKey } from './server/credentials/geminiCredentialVault';
+import { validateGeminiApiKey } from './server/ai/geminiFallback';
 import {
   createAuthMiddleware,
   createCronAuthMiddleware,
@@ -161,6 +162,22 @@ app.put('/api/settings/gemini-key', requireAuth, async (req: AuthenticatedReques
   if (!supabase) return res.status(503).json({ error: 'Supabase backend is not configured.' });
   if (apiKey.length < 20 || apiKey.length > 512 || /\s/.test(apiKey)) return res.status(400).json({ error: 'Enter a complete Gemini API key (20–512 characters, without spaces).' });
   try {
+    await validateGeminiApiKey(apiKey);
+  } catch (verificationError: any) {
+    const status = Number(verificationError?.status ?? verificationError?.code ?? 0);
+    if (status === 401 || status === 403) {
+      return res.status(400).json({ error: 'Gemini rejected this key or it does not have access to the configured model. Check the key and Google AI Studio project permissions.' });
+    }
+    if (status === 429) {
+      return res.status(429).json({ error: 'Gemini is currently rate-limited or over quota. The key was not saved; retry after the quota resets.' });
+    }
+    if (status === 404) {
+      return res.status(400).json({ error: 'This Gemini key did not expose any supported model in the configured model list. Check model availability for your Google AI Studio project.' });
+    }
+    console.warn('Gemini key verification could not complete:', status ? `HTTP ${status}` : 'network or provider error');
+    return res.status(503).json({ error: 'Could not verify this Gemini key with Google right now. The key was not saved; check backend network access and retry.' });
+  }
+  try {
     const encrypted = encryptGeminiApiKey(apiKey);
     const updatedAt = new Date().toISOString();
     const { error } = await supabase.from('user_ai_credentials').upsert({
@@ -172,7 +189,7 @@ app.put('/api/settings/gemini-key', requireAuth, async (req: AuthenticatedReques
       updated_at: updatedAt,
     }, { onConflict: 'user_id' });
     if (error) throw error;
-    return res.json({ configured: true, keyHint: `****${apiKey.slice(-4)}`, updatedAt, message: 'Key encrypted and saved. Model access will be verified on the next AI request.' });
+    return res.json({ configured: true, keyHint: `****${apiKey.slice(-4)}`, updatedAt, message: 'Gemini key validated with Google and encrypted before saving.' });
   } catch (error: any) {
     console.error('Gemini credential save error:', error?.message || error);
     return res.status(503).json({ error: 'Could not securely save the Gemini key. Confirm the Supabase migration and GEMINI_CREDENTIALS_ENCRYPTION_KEY backend secret.' });
@@ -397,7 +414,7 @@ app.get('/api/jobs/recommended', requireAuth, async (req: AuthenticatedRequest, 
   try {
     const latestScanId = await getLatestCompletedScanId(userId);
     const { data, error } = await supabase.from('user_discovered_jobs')
-      .select('*').eq('user_id', userId).gt('match_score', 85)
+      .select('*').eq('user_id', userId).gte('match_score', 85)
       .order('match_score', { ascending: false })
       .order('last_seen_at', { ascending: false })
       .limit(100);
@@ -479,13 +496,18 @@ app.delete('/api/jobs/saved/:jobKey', requireAuth, async (req: AuthenticatedRequ
 
 // Source Connectors Status Endpoint
 app.get('/api/sources', requireAuth, (req: AuthenticatedRequest, res) => {
-  const statuses = registeredConnectors.map((c) => ({
-    sourceId: c.sourceId,
-    displayName: c.displayName,
-    apiKeyEnvVar: c.apiKeyEnvVar,
-    isConfigured: c.isConfigured() && isConnectorEnabled(c),
-    enabled: isConnectorEnabled(c),
-  }));
+  const statuses = registeredConnectors.map((c) => {
+    const isConfigured = c.isConfigured();
+    const enabled = isConnectorEnabled(c);
+    return {
+      sourceId: c.sourceId,
+      displayName: c.displayName,
+      apiKeyEnvVar: c.apiKeyEnvVar,
+      isConfigured,
+      enabled,
+      status: !enabled ? 'Disabled' : !isConfigured ? 'Not configured' : 'Not tested',
+    };
+  });
   res.json(statuses);
 });
 

@@ -4,7 +4,7 @@ export interface Job {
   company: string;
   companyLogo?: string;
   location: string;
-  source: 'Apify LinkedIn Actor' | 'RapidAPI LinkedIn' | 'Greenhouse ATS' | 'Lever ATS' | 'Public Jobs Feed' | 'User Custom Entry';
+  source: 'Apify LinkedIn Actor' | 'RapidAPI LinkedIn' | 'Greenhouse ATS' | 'Lever ATS' | 'Public Jobs Feed' | 'Remotive Public Jobs Feed' | 'User Custom Entry';
   postedDate: string;
   matchScore: number | null;
   salary?: string;
@@ -112,7 +112,7 @@ export interface ScanHistoryEntry {
   startedAt: string;
   completedAt: string;
   durationMs: number;
-  status: 'completed' | 'failed' | 'rate_limited';
+  status: 'completed' | 'partial' | 'failed' | 'rate_limited';
   jobsDiscovered: number;
   newJobsFound: number;
   highMatchJobsCount: number;
@@ -128,7 +128,7 @@ export interface SourceHealth {
   id: string;
   name: string;
   type: 'Apify LinkedIn Actor' | 'RapidAPI LinkedIn' | 'Public RSS/ATS' | 'Direct Employer ATS';
-  status: 'Connected' | 'Available' | 'Configured (not health-tested)' | 'Credentials Required' | 'Error' | 'Quota Exceeded';
+  status: 'Not configured' | 'Disabled' | 'Not tested' | 'Healthy' | 'Healthy, no matching jobs' | 'Authentication failed' | 'Rate limited' | 'Timed out' | 'Provider unavailable' | 'Configuration error' | 'Connected' | 'Available' | 'Configured (not health-tested)' | 'Credentials Required' | 'Error' | 'Quota Exceeded';
   lastCheckTime: string;
   jobsIndexedCount: number;
   allowedRefreshInterval: string;

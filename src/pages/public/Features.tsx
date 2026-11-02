@@ -69,7 +69,7 @@ export const Features: React.FC = () => {
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Automatic recommendations view for jobs scoring &gt; 85% match</span>
+              <span>Automatic recommendations view for jobs scoring ≥ 85% match</span>
             </li>
           </ul>
         </div>

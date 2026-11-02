@@ -55,7 +55,7 @@ No Render service declaration is checked into this repository; deployment must b
 ## 4. Notification Categories & Preferences
 
 Users can save preferences in **Settings**:
-- **High-match alerts**: Controls in-app alerts for qualifying scores (>85%).
+- **High-match alerts**: Controls in-app alerts for qualifying scores (85% or higher).
 - **Automatically save high matches**: Persists qualifying jobs in the user's saved-jobs list.
 - **Push notifications**: Controls browser push dispatch after a subscription has been registered.
 - **Email summaries**: Not available; no email-delivery provider is configured.

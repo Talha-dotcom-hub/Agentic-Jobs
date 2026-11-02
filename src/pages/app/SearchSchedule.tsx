@@ -248,19 +248,20 @@ export const SearchSchedule: React.FC = () => {
               <li key={entry.id} className="rounded-xl border border-[#27272A] bg-surface-container-lowest p-3.5 space-y-1.5 font-code-meta">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 font-semibold text-on-surface">
-                    <CheckCircle2 className={`h-3.5 w-3.5 ${entry.status === 'completed' ? 'text-primary' : 'text-error'}`} />
-                    {entry.status === 'completed' ? 'Completed' : entry.status === 'rate_limited' ? 'Rate limited' : 'Failed'}
+                    <CheckCircle2 className={`h-3.5 w-3.5 ${entry.status === 'completed' ? 'text-primary' : entry.status === 'partial' ? 'text-amber-400' : 'text-error'}`} />
+                    {entry.status === 'completed' ? 'Completed' : entry.status === 'partial' ? 'Partial results' : entry.status === 'rate_limited' ? 'Rate limited' : 'Failed'}
                   </span>
                   <time className="text-[10px] text-on-surface-variant tabular-nums" dateTime={entry.startedAt}>
                     {new Date(entry.startedAt).toLocaleString()}
                   </time>
                 </div>
                 <p className="text-[11px] text-on-surface-variant">
-                  {entry.jobsDiscovered} retrieved · {entry.newJobsFound} new · {entry.highMatchJobsCount} matches above 85%
+                  {entry.jobsDiscovered} retrieved · {entry.newJobsFound} new · {entry.highMatchJobsCount} matches at or above 85%
                 </p>
                 <p className="text-[10px] text-on-surface-variant/70">
                   {entry.sourcesChecked} sources checked · {entry.verifiedJobsCount} source-verified · {entry.duplicatesSuppressedCount} duplicates suppressed
                 </p>
+                {entry.sourceErrors.length > 0 && <p className="text-[11px] text-amber-300">Source issues: {entry.sourceErrors.join(' · ')}</p>}
                 {entry.errorDetails && <p className="text-[11px] text-error">{entry.errorDetails}</p>}
               </li>
             ))}

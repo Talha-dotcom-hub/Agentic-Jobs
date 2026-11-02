@@ -124,6 +124,9 @@ export interface DiscoveryScanResult {
   aiScoringExhausted?: boolean;
   aiScoringError?: string;
   scoredJobsCount?: number;
+  matchScoringComplete?: boolean;
+  sourceFailuresCount?: number;
+  sourceErrors?: string[];
   message?: string;
   error?: string;
 }
@@ -304,12 +307,14 @@ export async function fetchSourcesApi(): Promise<SourceHealth[]> {
     type: source.sourceId === 'apify-linkedin' ? 'Apify LinkedIn Actor'
       : source.sourceId === 'rapidapi-linkedin' ? 'RapidAPI LinkedIn'
       : source.sourceId === 'public-feeds' ? 'Public RSS/ATS' : 'Direct Employer ATS',
-    status: source.apiKeyEnvVar === 'NONE' ? 'Available'
-      : source.isConfigured ? 'Configured (not health-tested)' : 'Credentials Required',
-    lastCheckTime: 'Not live-tested',
+    status: ['Not configured', 'Disabled', 'Not tested'].includes(source.status)
+      ? source.status
+      : !source.enabled ? 'Disabled' : !source.isConfigured ? 'Not configured' : 'Not tested',
+    lastCheckTime: 'Not tested',
     jobsIndexedCount: 0,
     allowedRefreshInterval: 'Source-dependent',
-    requiresApiKey: source.apiKeyEnvVar !== 'NONE',
-    apiKeyName: source.apiKeyEnvVar === 'NONE' ? undefined : source.apiKeyEnvVar,
+    requiresApiKey: source.sourceId === 'apify-linkedin' || source.sourceId === 'rapidapi-linkedin',
+    apiKeyName: source.sourceId === 'apify-linkedin' ? 'APIFY_API_TOKEN'
+      : source.sourceId === 'rapidapi-linkedin' ? 'RAPIDAPI_KEY' : undefined,
   }));
 }

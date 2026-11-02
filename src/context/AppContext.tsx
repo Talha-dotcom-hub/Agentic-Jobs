@@ -433,6 +433,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             url.searchParams.set('view', 'dashboard');
             window.history.replaceState({ ...(window.history.state || {}), agenticJobsView: 'dashboard' }, '', url);
             viewHistoryRef.current = ['dashboard'];
+          } else {
+            activeViewRef.current = requestedView;
+            setActiveViewState(requestedView);
+            viewHistoryRef.current = [requestedView];
           }
         }
       } catch (error) {
@@ -498,9 +502,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
-  // Sync Real User Data from Supabase Tables
+  // Sync Real User Data from Supabase Tables. Ignore results from an earlier account/session.
   useEffect(() => {
     if (!user.isAuthenticated || isDemoMode || !user.id || !isSupabaseConfigured) return;
+    let cancelled = false;
 
     const fetchUserData = async () => {
       try {
@@ -508,6 +513,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           fetchDiscoveredJobsApi(),
           fetchSavedJobsApi(),
         ]);
+        if (cancelled) return;
         const savedIds = savedJobs.map((job) => job.id);
         setSavedJobIds(savedIds);
         const allJobs = new Map<string, Job>();
@@ -515,14 +521,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         for (const job of savedJobs) if (!allJobs.has(job.id)) allJobs.set(job.id, job);
         setJobs(Array.from(allJobs.values()).map((job) => ({ ...job, saved: savedIds.includes(job.id) })));
       } catch (err) {
+        if (cancelled) return;
         console.warn('Saved/discovered jobs sync failed:', err);
         showToast('Could not load saved or discovered jobs. Try refreshing after checking the backend.', 'error');
       }
 
+      if (cancelled) return;
       try {
         const { data: apps, error: appsError } = await supabase
           .from('applications').select('*').eq('user_id', user.id).order('applied_date', { ascending: false });
         if (appsError) throw appsError;
+        if (cancelled) return;
         setApplications((apps || []).map((a: any) => ({
           id: a.id, jobId: a.job_id || undefined, jobTitle: a.job_title, company: a.company,
           location: a.location || 'Not specified', originalUrl: a.original_url || '',
@@ -532,37 +541,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           followUpNeeded: a.follow_up_needed || false,
         })));
       } catch (err) {
-        console.warn('Applications sync failed:', err);
+        if (!cancelled) console.warn('Applications sync failed:', err);
       }
 
+      if (cancelled) return;
       try {
         const { data: notifs, error: notificationError } = await supabase
           .from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
         if (notificationError) throw notificationError;
+        if (cancelled) return;
         setNotifications((notifs || []).map((n: any) => ({
           id: n.id, title: n.title, message: n.message, read: Boolean(n.read),
           type: n.type || 'system', timestamp: n.created_at, link: n.link || undefined,
         })));
       } catch (err) {
-        console.warn('Notifications sync failed:', err);
+        if (!cancelled) console.warn('Notifications sync failed:', err);
       }
 
+      if (cancelled) return;
       try {
         const savedSchedule = await fetchScanSchedule();
+        if (cancelled) return;
         setSchedule(savedSchedule);
       } catch (err) {
+        if (cancelled) return;
         console.warn('Schedule sync failed:', err);
         showToast('Could not load your saved scan schedule.', 'error');
       }
 
+      if (cancelled) return;
       try {
         setSources(await fetchSourcesApi());
       } catch (err) {
+        if (cancelled) return;
         console.warn('Source configuration lookup failed:', err);
         setSources([]);
       }
     };
-    fetchUserData();
+    void fetchUserData();
+    return () => { cancelled = true; };
   }, [user.id, user.isAuthenticated, isDemoMode]);
 
   const loginUser = async (email: string, password?: string, name?: string) => {
@@ -988,12 +1005,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setJobs(Array.from(allJobs.values()).map((job) => ({ ...job, saved: savedIds.includes(job.id) })));
       setSavedJobIds(savedIds);
       setSchedule(savedSchedule);
-      if (result.aiScoringError || result.aiScoringExhausted || (result.jobsDiscovered > 0 && result.aiScoringConfigured && Number(result.scoredJobsCount || 0) === 0)) {
-        showToast(result.aiScoringError || `Scan discovered ${result.jobsDiscovered} jobs, but AI scoring was unavailable. Unscored jobs were saved without invented scores.`, 'info');
+      if (result.matchScoringComplete && result.highMatchJobsCount === 0) {
+        showToast('Scan completed. No job matches found according to your resume with an 85% or higher match score.', 'info');
+      } else if (result.matchScoringComplete && result.highMatchJobsCount > 0) {
+        showToast(`Matching jobs are ready: ${result.highMatchJobsCount} jobs scored 85% or higher.`, 'success');
+      } else if (result.sourceFailuresCount) {
+        const failureSummary = (result.sourceErrors || []).join('; ').slice(0, 320);
+        showToast(`Partial discovery: ${result.jobsDiscovered} jobs retrieved; ${result.sourceFailuresCount} configured source(s) failed. No definitive no-match result is available.${failureSummary ? ` ${failureSummary}` : ''}`, 'info');
+      } else if (result.aiScoringError || result.aiScoringExhausted) {
+        showToast(result.aiScoringError || 'AI scoring was rate-limited. Discovery results were retained without invented match scores.', 'info');
       } else if (result.aiScoringConfigured === false) {
-        showToast(`Scan discovered ${result.jobsDiscovered} jobs. Connect your personal Gemini key for AI match scores.`, 'info');
+        showToast(`Job discovery finished with ${result.jobsDiscovered} jobs. Connect your personal Gemini key to complete resume matching.`, 'info');
       } else {
-        showToast(`Scan completed: ${result.jobsDiscovered} jobs discovered, ${result.highMatchJobsCount} high matches.`, 'success');
+        showToast(`Resume matching is incomplete (${Number(result.scoredJobsCount || 0)} of ${result.jobsDiscovered} returned jobs scored). No final no-match result is available yet.`, 'info');
       }
     } catch (error: any) {
       setSchedule((prev) => ({ ...prev, status: 'error' }));

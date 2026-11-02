@@ -25,6 +25,8 @@ Audited against the environment-variable reads in the server, worker, browser, a
 | `RAPID_API` | RapidAPI job-source connector (alias) | Same key contract as `RAPIDAPI_KEY`; sent in the `x-rapidapi-key` header. | Optional unless the source is enabled. | This alias was added to match the supplied Render variable name. |
 | `RAPIDAPI_HOST` | RapidAPI job-source connector | Product hostname used both for the request URL and `x-rapidapi-host`. | Optional in code; defaults to `linkedin-data-api.p.rapidapi.com`. | Must be the exact host for the subscribed RapidAPI product. |
 | `RAPIDAPI_SEARCH_PATH` | RapidAPI job-source connector | Product search path; defaults to `/search-jobs`. | Optional in code. | Must match the product's actual documented endpoint. |
+| `ATS_GREENHOUSE_BOARDS` | Greenhouse public Job Board connector | Comma-separated Greenhouse board tokens. | Optional; leave empty until boards are selected. | Public GET job-board endpoints do not require API keys; the board token is part of the URL. |
+| `ATS_LEVER_COMPANIES` | Lever Postings API connector | Comma-separated Lever site/company slugs. | Optional; leave empty until sites are selected. | Public postings endpoint uses the site slug and does not require an API key. |
 | `ENABLE_APPROVED_THIRD_PARTY_JOB_CONNECTORS` | Source manager | Must equal literal `true` to call RapidAPI/Apify. | Optional; defaults off. | This is an additional setting not in the supplied Render variable list. Keys alone do not enable these sources. |
 | `RUN_SCHEDULER_WORKER` | API server process | Set to `false` when a separate worker service is running. | Optional. | A separate Render Background Worker must be configured with `npm run worker`; this repository has no Render service declaration. |
 | `PORT` | API server | Listening port; defaults to `3000`. | Optional. | Normally supplied by hosting. |
@@ -35,6 +37,7 @@ Audited against the environment-variable reads in the server, worker, browser, a
 - Apify authentication is correctly sent as a Bearer token. The code now accepts both `APIFY_API_TOKEN` and the supplied Render name `APIFY_KEY`.
 - RapidAPI authentication is correctly sent through `x-rapidapi-key`, with `x-rapidapi-host` set from `RAPIDAPI_HOST`. The code now accepts both `RAPIDAPI_KEY` and the supplied Render name `RAPID_API`.
 - Neither connector can be considered live merely because its key exists. Provider opt-in, actor/product access, correct RapidAPI host/path, account quota, and valid live responses still need verification.
+- Greenhouse and Lever are configured through public board/site identifiers, not commercial API keys. The server-side source endpoint reports `Not configured`, `Disabled`, or `Not tested`; it does not label a connector healthy until a real provider request runs.
 - Shared Gemini use is off unless `ALLOW_SHARED_GEMINI_KEY=true`. Personal Gemini credentials are encrypted with AES-256-GCM and require a stable `GEMINI_CREDENTIALS_ENCRYPTION_KEY` of at least 32 characters.
 - Production cron calls require `CRON_SECRET` in one of the supported headers.
 - Web Push requires a matching VAPID public/private pair. Code validates that the public key is derived from the configured private key at service initialization.
@@ -42,4 +45,4 @@ Audited against the environment-variable reads in the server, worker, browser, a
 
 ## Verification limits
 
-This audit can verify code references and local automated tests. It cannot inspect Render's private environment, determine whether the variable values in Render are valid, apply Supabase migrations, check live account subscriptions/quota, or prove that a Render worker is running. No production writes or paid provider runs were performed for this audit.
+This audit can verify code references and local automated tests. It cannot inspect Render's private environment, determine whether the variable values in Render are valid, apply Supabase migrations, check live account subscriptions/quota, or prove that a Render worker is running. No production writes or paid provider runs were performed for this audit. The Remotive public API also has attribution, display and rate-limit conditions; verify that the application's authenticated listing flow is permitted under the current terms or use Remotive's paid/private API before production use.

@@ -26,12 +26,14 @@ async function withNoOptionalSources<T>(fn: () => Promise<T>): Promise<T> {
 
 function mockPublicFeed() {
   const originalFetch = globalThis.fetch;
+  let requestCount = 0;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.startsWith('https://remotive.com/api/remote-jobs')) {
+      requestCount += 1;
       return new Response(JSON.stringify({ jobs: [{
         id: 321, title: 'React Developer', company_name: 'Example Remote Co',
-        url: 'https://example.com/jobs/react-developer', candidate_required_location: 'Worldwide',
+        url: 'https://remotive.com/remote-jobs/product/react-developer-321', candidate_required_location: 'Worldwide',
         job_type: 'full_time', tags: ['React', 'TypeScript'],
         description: '<p>Build web applications with React and TypeScript.</p>',
         publication_date: '2026-10-01T00:00:00Z', verified: false,
@@ -39,7 +41,7 @@ function mockPublicFeed() {
     }
     return new Response('Unexpected upstream request in test', { status: 500 });
   }) as typeof fetch;
-  return () => { globalThis.fetch = originalFetch; };
+  return { restore: () => { globalThis.fetch = originalFetch; }, getRequestCount: () => requestCount };
 }
 
 describe('Job Source Connectors Integration Suite', () => {
@@ -67,10 +69,13 @@ describe('Job Source Connectors Integration Suite', () => {
     assert.ok(result.error?.includes('No ATS boards configured'));
   }));
 
-  test('Public feed normalizes only real jobs matching requested resume terms', async () => withNoOptionalSources(async () => {
-    const restoreFetch = mockPublicFeed();
+  test('Remotive feed normalizes matching jobs, attributes the source, and caches catalogue requests', async () => withNoOptionalSources(async () => {
+    const feedMock = mockPublicFeed();
     try {
-      const result = await publicFeedsConnector.fetchJobs({ keywords: 'React TypeScript', limit: 10 });
+      const [result, repeated] = await Promise.all([
+        publicFeedsConnector.fetchJobs({ keywords: 'React TypeScript', limit: 10 }),
+        publicFeedsConnector.fetchJobs({ keywords: 'React TypeScript', limit: 10 }),
+      ]);
       assert.strictEqual(result.isConfigured, true);
       assert.strictEqual(result.success, true);
       assert.strictEqual(result.jobs.length, 1);
@@ -78,14 +83,16 @@ describe('Job Source Connectors Integration Suite', () => {
       assert.ok(job.id.length > 0);
       assert.strictEqual(job.title, 'React Developer');
       assert.strictEqual(job.company, 'Example Remote Co');
-      assert.strictEqual(job.originalUrl, 'https://example.com/jobs/react-developer');
-      assert.strictEqual(job.source, 'Public Jobs Feed');
+      assert.strictEqual(job.originalUrl, 'https://remotive.com/remote-jobs/product/react-developer-321');
+      assert.strictEqual(job.source, 'Remotive Public Jobs Feed');
       assert.strictEqual(job.verified, false);
-    } finally { restoreFetch(); }
+      assert.strictEqual(repeated.jobs.length, 1);
+      assert.strictEqual(feedMock.getRequestCount(), 1, 'the public catalogue is fetched once during the cache window');
+    } finally { feedMock.restore(); }
   }));
 
   test('sourceManager executes connectors and deduplicates jobs using a deterministic feed fixture', async () => withNoOptionalSources(async () => {
-    const restoreFetch = mockPublicFeed();
+    const feedMock = mockPublicFeed();
     try {
       const searchRes = await searchAllSources({ keywords: 'developer', limit: 10 });
       assert.ok(Array.isArray(searchRes.jobs));
@@ -98,7 +105,7 @@ describe('Job Source Connectors Integration Suite', () => {
         assert.strictEqual(seen.has(key), false, `No duplicate job entries for ${key}`);
         seen.add(key);
       }
-    } finally { restoreFetch(); }
+    } finally { feedMock.restore(); }
   }));
 
   test('deduplication strips tracking parameters but preserves separate vacancies with similar names', () => {

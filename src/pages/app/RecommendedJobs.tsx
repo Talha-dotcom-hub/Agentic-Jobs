@@ -25,18 +25,18 @@ export const RecommendedJobs: React.FC = () => {
             >
               verified
             </span>
-            <span>Tier-1 Algorithmic Candidates (&gt;85% Match)</span>
+            <span>Tier-1 Algorithmic Candidates (≥85% Match)</span>
           </div>
           <h1 className="font-headline-lg text-xl sm:text-2xl font-bold text-on-surface">Recommended Opportunities</h1>
           <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
-            Opportunities scoring over 85% verified fit based on Google Gemini resume analysis.
+            Opportunities scoring at least 85% verified fit based on Google Gemini resume analysis.
           </p>
         </div>
       </div>
 
       {recommendedJobs.length === 0 ? (
         <div className="py-16 text-center space-y-3 bg-surface-container border border-[#27272A] rounded-xl">
-          <p className="font-body-sm text-on-surface-variant text-xs">No opportunities currently score above 85%.</p>
+          <p className="font-body-sm text-on-surface-variant text-xs">No opportunities currently meet the 85% or higher match threshold.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">

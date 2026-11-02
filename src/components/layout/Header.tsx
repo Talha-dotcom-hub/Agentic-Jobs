@@ -83,7 +83,7 @@ export const Header: React.FC = () => {
     switch (activeView) {
       case 'dashboard': return 'Dashboard Overview';
       case 'discover': return 'Discover Opportunities';
-      case 'recommended': return 'Recommended Matches (>85%)';
+      case 'recommended': return 'Recommended Matches (≥85%)';
       case 'saved': return 'Saved Opportunities';
       case 'resume': return 'My Resume & Skills';
       case 'applications': return 'Application Tracker';
