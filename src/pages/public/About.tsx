@@ -15,11 +15,11 @@ export const About: React.FC = () => {
       <div className="p-8 rounded-2xl bg-gradient-to-br from-violet-950/40 via-slate-900 to-slate-900 border border-violet-500/30 space-y-6">
         <div className="flex items-center gap-2 text-violet-300 font-semibold text-sm">
           <Code2 className="w-5 h-5 text-cyan-400" />
-          <span>Project Developer</span>
+          <span>Project Team</span>
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed">
-          Agentic Jobs was developed by M Talha Iftikhar as a full-stack SaaS application combining React, TypeScript, Express, and Google Gemini SDK integrations.
+          Agentic Jobs was built by M Talha Iftikhar and Laiba Asif as a full-stack SaaS application combining React, TypeScript, Express, and Google Gemini SDK integrations.
         </p>
 
         <div className="pt-2">
