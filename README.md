@@ -406,16 +406,20 @@ Agentic-Jobs/
 - **Match scores are estimates:** never interpret them as a hiring outcome prediction.
 - **License:** the repository currently has no `LICENSE` file. Until a license is added, don't assume the source is released under an open-source license or that broad reuse permission is granted.
 
-## 👥 Team
+## 👥 Project team
 
 <div align="center">
   <table>
     <tr>
-      <td align="center" width="100%">
+      <td align="center">
         <strong>M Talha Iftikhar</strong><br />
-        <sub>Project developer &amp; Software Architect</sub><br /><br />
+        <sub>Project developer &amp; software architect</sub><br /><br />
         <a href="https://github.com/Talha-dotcom-hub"><img src="https://img.shields.io/badge/GitHub-Talha--dotcom--hub-181717?style=flat-square&logo=github&logoColor=white" alt="Talha GitHub" /></a>
         <a href="https://www.linkedin.com/in/talha-dev-pk"><img src="https://img.shields.io/badge/LinkedIn-Profile-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="Talha LinkedIn" /></a>
+      </td>
+      <td align="center">
+        <strong>Laiba Asif</strong><br />
+        <sub>Project team</sub>
       </td>
     </tr>
   </table>
@@ -431,9 +435,8 @@ Issues, thoughtful reviews, and focused pull requests are welcome.
 4. Run the project checks and include the actual results in your pull request.
 
 ```bash
-npm run lint
-npm run build
-npx tsx --test tests/*.test.ts
+npm ci
+npm run check
 ```
 
 ## 📄 License
