@@ -340,7 +340,7 @@ export const Home: React.FC = () => {
         <div className="p-6 sm:p-8 rounded-2xl bg-[#141416] border border-[#27272A] flex flex-col items-center text-center space-y-4">
           <div className="space-y-1">
             <h2 className="text-xl sm:text-2xl font-bold text-white">Built by</h2>
-            <p className="text-sm text-[#A1A1AA]">The developer behind Agentic Jobs</p>
+            <p className="text-sm text-[#A1A1AA]">Built by M Talha Iftikhar &amp; Laiba Asif</p>
           </div>
           <TiltCard>
             <div className="px-8 py-6 rounded-xl bg-[#0A0A0B] border border-[#27272A] text-center min-w-[280px] max-w-[320px] space-y-2">

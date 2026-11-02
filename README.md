@@ -20,7 +20,7 @@
     <img src="https://img.shields.io/badge/Google_Gemini-AI%20Matching-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Google Gemini" />
     <img src="https://img.shields.io/badge/PDF.js-PDF%20Parsing-E5322D?style=flat-square&logo=adobeacrobatreader&logoColor=white" alt="PDF.js" />
     <img src="https://img.shields.io/badge/PWA-Installable-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA" />
-    <img src="https://img.shields.io/badge/Tests-68%20passed%20locally-16A34A?style=flat-square&logo=checkmarx&logoColor=white" alt="68 tests passed locally" />
+    <a href="https://github.com/Talha-dotcom-hub/Agentic-Jobs/actions/workflows/ci.yml"><img src="https://github.com/Talha-dotcom-hub/Agentic-Jobs/actions/workflows/ci.yml/badge.svg" alt="Continuous integration" /></a>
   </p>
 </div>
 
@@ -53,6 +53,7 @@ The goal is to move beyond a basic job board: after a user configures their prof
 - [Supabase migrations](#-supabase-migrations)
 - [Run, test, and build](#-run-test-and-build)
 - [Deployment and background scans](#-deployment-and-background-scans)
+- [Deployment runbook](docs/DEPLOYMENT.md)
 - [Security and privacy](#-security-and-privacy)
 - [Project structure](#-project-structure)
 - [Known operational requirements](#-known-operational-requirements)
@@ -97,8 +98,8 @@ flowchart TD
 3. **Configure AI:** add a Gemini key in the product settings. Optional job-provider integrations can be configured separately.
 4. **Choose a schedule:** set the desired frequency and make sure the backend scheduler/cron is deployed and reachable.
 5. **Discover and evaluate:** configured sources return vacancies; matching uses available resume evidence and should keep failed/pending AI evaluations explicit.
-6. **Recommendation threshold:** only validated numeric resume-match scores strictly greater than 85% are included in recommended results; a score of 85%, a missing score, or an invalid score is excluded.
-6. **Review outcomes:** use recommendations, saved jobs, application tracking, history, and notifications to manage next steps.
+6. **Recommendation threshold:** validated numeric resume-match scores of **85% or higher** qualify for recommended results; missing, non-numeric, and invalid scores are excluded.
+7. **Review outcomes:** use recommendations, saved jobs, application tracking, history, and notifications to manage next steps.
 
 ## 🧰 Technology stack
 
@@ -140,7 +141,7 @@ The frontend and backend are separate deployment concerns:
 
 ### Prerequisites
 
-- Node.js 24 (the version used during recent local validation) and npm.
+- Node.js 24 or 26 LTS and npm 10+.
 - A Supabase project for real authentication and persisted data.
 - A Gemini API key for AI matching.
 - Optional provider credentials for Apify / RapidAPI.
@@ -151,7 +152,7 @@ The frontend and backend are separate deployment concerns:
 ```bash
 git clone https://github.com/Talha-dotcom-hub/Agentic-Jobs.git
 cd Agentic-Jobs
-npm install
+npm ci
 ```
 
 ### 2. Configure environment
@@ -238,13 +239,14 @@ The repository contains these schema/policy migrations:
 3. `003_structured_resume_memory.sql`
 4. `004_account_deletion_and_policies.sql`
 5. `005_harden_account_deletion_rpc.sql`
-6. `20261026_user_gemini_credentials_and_discovered_jobs.sql`
-7. `006_scan_runs_saved_jobs_and_scheduling.sql`
+6. `006_scan_runs_saved_jobs_and_scheduling.sql`
+7. `20261026_user_gemini_credentials_and_discovered_jobs.sql`
 8. `20261029_scan_history_deduplication.sql`
 9. `20261030_durable_scan_queue.sql`
 10. `20261030_resume_storage_upload_limits.sql`
+11. `20261102_scan_history_partial_status.sql`
 
-Apply them in the dependency order appropriate to your migration workflow. For manual SQL Editor setup on a new project, use the numbered base migrations first, then the account-deletion hardening migration, then the Gemini credential/discovered-job migration and scan-run/saved-job migration. Before applying anything to an existing project, inspect the migrations already applied—do not blindly rerun production SQL. Keep the database migration history consistent with your chosen workflow.
+Apply them in the order above on a **new** project. On an existing project, compare this list with the migration history first and apply only missing migrations in dependency order. Do not blindly rerun production SQL or delete migration history. The application repository cannot confirm which migrations have been applied to your live Supabase project. See [`supabase/README.md`](supabase/README.md) for the complete migration guide.
 
 The migrations include user profiles, application data, schedules, push subscriptions/history, encrypted per-user Gemini credentials, discovered-job snapshots, scan-run persistence, and hardening for account-deletion RPC permissions. The contents of a migration file do **not** prove it has been applied to a particular live Supabase project.
 
@@ -256,11 +258,12 @@ The latest migrations add scan IDs and observation counts to discovered jobs, id
 |---|---|
 | `npm run dev` | Run the development app/server |
 | `npm run lint` | TypeScript type-check (`tsc --noEmit`) |
+| `npm test` | Run the Node.js test suite through the repository's pinned `tsx` dependency |
 | `npm run build` | Build the frontend and bundle the backend into `server-dist/` |
 | `npm run worker` | Run the durable Supabase-backed scheduler as a standalone worker |
-| `npx tsx --test tests/*.test.ts` | Run automated test suites |
+| `npm run check` | Run type-check, tests, and production build sequentially |
 
-**Latest local validation (29 Oct 2026):** TypeScript lint/type-check and production build passed, and **68 tests passed with 0 failures**. The production build reports a large JavaScript chunk warning for the existing application bundle. These are local checks, not a guarantee that every live provider, database migration, push subscription, deployment, or scheduled job is configured correctly.
+GitHub Actions runs type-check, tests, and the production build on Node.js 24 and 26 for pushes and pull requests. A passing CI workflow verifies the source build in its runner; it does not prove that external providers, live migrations, deployment secrets, scheduled workers, or push delivery are configured.
 
 ### Run the built backend
 
@@ -353,6 +356,8 @@ Do not advertise “24/7 autonomous” as a production guarantee until these con
 
 ## 🛡️ Security and privacy
 
+Security disclosures: see [SECURITY.md](SECURITY.md). Contributions and local validation: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 - Never commit `.env`, API keys, service-role credentials, cron secrets, VAPID private keys, real resumes, or production database exports.
 - Treat `VITE_*` values as public because they may be bundled into browser code.
 - Use verified Supabase user identity for private data access; never authorize a request based only on a client-supplied user ID.
@@ -384,6 +389,7 @@ Agentic-Jobs/
 │   ├── scheduler/           # Scan engine and scheduler worker
 │   └── sources/             # Public feeds, ATS, Apify, RapidAPI
 ├── supabase/migrations/     # Schema, RLS, and feature migrations
+├── docs/                    # Setup, deployment, configuration, and changelog
 ├── tests/                   # Unit/security/integration-style tests
 ├── server.ts                # Express API entry point
 ├── netlify.toml             # Frontend hosting and API proxy
@@ -400,16 +406,20 @@ Agentic-Jobs/
 - **Match scores are estimates:** never interpret them as a hiring outcome prediction.
 - **License:** the repository currently has no `LICENSE` file. Until a license is added, don't assume the source is released under an open-source license or that broad reuse permission is granted.
 
-## 👥 Team
+## 👥 Project team
 
 <div align="center">
   <table>
     <tr>
-      <td align="center" width="100%">
+      <td align="center">
         <strong>M Talha Iftikhar</strong><br />
-        <sub>Project developer &amp; Software Architect</sub><br /><br />
+        <sub>Project developer &amp; software architect</sub><br /><br />
         <a href="https://github.com/Talha-dotcom-hub"><img src="https://img.shields.io/badge/GitHub-Talha--dotcom--hub-181717?style=flat-square&logo=github&logoColor=white" alt="Talha GitHub" /></a>
         <a href="https://www.linkedin.com/in/talha-dev-pk"><img src="https://img.shields.io/badge/LinkedIn-Profile-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="Talha LinkedIn" /></a>
+      </td>
+      <td align="center">
+        <strong>Laiba Asif</strong><br />
+        <sub>Project team</sub>
       </td>
     </tr>
   </table>
@@ -425,14 +435,13 @@ Issues, thoughtful reviews, and focused pull requests are welcome.
 4. Run the project checks and include the actual results in your pull request.
 
 ```bash
-npm run lint
-npm run build
-npx tsx --test tests/*.test.ts
+npm ci
+npm run check
 ```
 
 ## 📄 License
 
-No `LICENSE` file is included at this time. Until the maintainers add one, do not assume that this repository has an open-source license or that broad reuse, redistribution, or modification rights are granted.
+No `LICENSE` file is included at this time. This repository is not currently published under an open-source license. Do not assume reuse, redistribution, or modification rights are granted. Add a license only after all project contributors agree to its terms.
 
 ---
 

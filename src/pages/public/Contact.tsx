@@ -14,8 +14,11 @@ export const Contact: React.FC = () => {
     e.preventDefault();
     if (!name || !email || !message) return;
 
+    const body = [`Name: ${name}`, `Reply email: ${email}`, '', message].join('\n');
+    const mailto = `mailto:support@agenticjobs.dev?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
     setSubmitted(true);
-    showToast('Support message submitted successfully.', 'success');
+    showToast('Email draft requested. Send it from your email app to submit your message.', 'info');
   };
 
   return (
@@ -39,7 +42,7 @@ export const Contact: React.FC = () => {
               <span>Email Support</span>
             </div>
             <p className="text-slate-300">support@agenticjobs.dev</p>
-            <p className="text-slate-500 text-[11px]">Responses typically delivered within 24 hours.</p>
+            <p className="text-slate-500 text-[11px]">Use the form to prepare an email draft. It is sent only after you confirm it in your email app.</p>
           </div>
 
           <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-3">
@@ -57,9 +60,9 @@ export const Contact: React.FC = () => {
           {submitted ? (
             <div className="py-12 text-center space-y-4">
               <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-              <h3 className="text-lg font-bold text-white">Message Received!</h3>
+              <h3 className="text-lg font-bold text-white">Email Draft Requested</h3>
               <p className="text-xs text-slate-300 max-w-sm mx-auto">
-                Thank you for reaching out, {name}. Our team will review your inquiry shortly.
+                Your email app should open with your message. The message is not sent until you press Send in your email app.
               </p>
               <button
                 onClick={() => {
@@ -73,7 +76,7 @@ export const Contact: React.FC = () => {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              <h3 className="text-sm font-bold text-white">Send Us a Direct Inquiry</h3>
+              <h3 className="text-sm font-bold text-white">Prepare a Support Email</h3>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

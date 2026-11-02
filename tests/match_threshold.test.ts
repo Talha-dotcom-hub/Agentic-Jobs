@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { isQualifyingMatchScore } from '../shared/matchThreshold.ts';
 
-describe('Strict resume-match threshold', () => {
+describe('Inclusive resume-match threshold', () => {
   test('finite numeric scores at or above 85 qualify', () => {
     assert.equal(isQualifyingMatchScore(100), true);
     assert.equal(isQualifyingMatchScore(86), true);

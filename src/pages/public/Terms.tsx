@@ -17,7 +17,7 @@ export const Terms: React.FC = () => {
       </p>
       <h2 className="text-sm font-bold text-white pt-2">3. Developer Credits</h2>
       <p>
-        Agentic Jobs is built by M Talha Iftikhar.
+        Agentic Jobs is built by M Talha Iftikhar and Laiba Asif.
       </p>
     </div>
   );
