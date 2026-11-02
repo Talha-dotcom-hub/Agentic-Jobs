@@ -34,6 +34,29 @@ describe('Auth & Backend Security Suite', () => {
       assert.strictEqual(isSafeExternalUrl('http://172.16.0.1/db'), false);
     });
 
+    test('Blocks shared, documentation, benchmark, and reserved IPv4 ranges', () => {
+      assert.strictEqual(isSafeExternalUrl('http://100.64.0.1/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://192.0.2.1/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://198.18.0.1/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://203.0.113.8/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://224.0.0.1/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://2130706433/'), false);
+    });
+
+    test('Blocks local, mapped, and documentation IPv6 literals while allowing public IPv6', () => {
+      assert.strictEqual(isSafeExternalUrl('http://[fc00::1]/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://[fe80::1]/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://[2001:db8::1]/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://[::ffff:7f00:1]/'), false);
+      assert.strictEqual(isSafeExternalUrl('https://[2001:4860:4860::8888]/'), true);
+    });
+
+    test('Rejects credential-bearing and local-only hostnames', () => {
+      assert.strictEqual(isSafeExternalUrl('https://user:pass@example.com/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://printer.local/'), false);
+      assert.strictEqual(isSafeExternalUrl('http://metadata/'), false);
+    });
+
     test('Blocks non-HTTP protocols', () => {
       assert.strictEqual(isSafeExternalUrl('file:///etc/passwd'), false);
       assert.strictEqual(isSafeExternalUrl('ftp://example.com/file'), false);
