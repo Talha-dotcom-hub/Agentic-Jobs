@@ -23,7 +23,7 @@ export const Footer: React.FC = () => {
             <div className="pt-2 border-t border-[#27272A]">
               <div className="flex items-center gap-1.5 text-xs text-primary font-medium font-code-meta">
                 <Code2 className="w-3.5 h-3.5 shrink-0" />
-                <span>Developed by M Talha Iftikhar</span>
+                <span>Built by M Talha Iftikhar &amp; Laiba Asif</span>
               </div>
             </div>
           </div>
@@ -108,7 +108,7 @@ export const Footer: React.FC = () => {
         {/* Bottom Credits Bar */}
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 font-code-meta text-on-surface-variant">
           <div>
-            &copy; {new Date().getFullYear()} Agentic Jobs. Developed by M Talha Iftikhar. All rights reserved.
+            &copy; {new Date().getFullYear()} Agentic Jobs. Built by M Talha Iftikhar &amp; Laiba Asif. All rights reserved.
           </div>
           <div className="flex items-center gap-4 text-on-surface-variant">
             <span className="flex items-center gap-1">
