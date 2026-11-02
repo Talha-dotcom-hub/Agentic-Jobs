@@ -2,14 +2,17 @@ node_modules/
 build/
 dist/
 coverage/
+
+# Local editor / operating-system files
+.vscode/
+.idea/
+*.swp
 .DS_Store
 *.log
 .env*
 !.env.example
 server-dist/
 server/data/vapid.json
-dev-dist/
-
 dev-dist/
 
 .aistudio/
