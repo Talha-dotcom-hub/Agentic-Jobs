@@ -257,7 +257,7 @@ export const Header: React.FC = () => {
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <div className="hidden 2xl:block"><PWAInstallButton /></div>
+            <div className="hidden xl:block"><PWAInstallButton /></div>
             {user.isAuthenticated || isDemoMode ? (
               <div className="flex items-center gap-2 relative">
                 <button
