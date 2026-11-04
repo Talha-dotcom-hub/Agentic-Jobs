@@ -76,12 +76,7 @@ export const AddJobModal: React.FC<AddJobModalProps> = ({ isOpen, onClose }) => 
       <div className="w-full max-w-lg bg-surface-container-high border border-[#27272A] rounded-xl shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
           <div className="flex items-center gap-2 text-on-surface font-semibold text-base font-headline-sm">
-            <span
-              className="material-symbols-outlined text-[18px] text-primary"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              add_circle
-            </span>
+            <Plus className="h-[18px] w-[18px] text-primary" aria-hidden="true" />
             <span>Add Custom Job Listing</span>
           </div>
           <button

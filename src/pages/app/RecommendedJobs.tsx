@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { JobCard } from '../../components/jobs/JobCard';
 import { JobDetailDrawer } from '../../components/jobs/JobDetailDrawer';
-import { Sparkles, CheckCircle2 } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
 import { useSelectedJob } from '../../hooks/useSelectedJob';
 
@@ -19,17 +19,12 @@ export const RecommendedJobs: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] bg-primary/10 border border-primary/20 text-xs font-code-meta font-medium text-primary mb-2">
-            <span
-              className="material-symbols-outlined text-[14px]"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              verified
-            </span>
-            <span>Tier-1 Algorithmic Candidates (≥85% Match)</span>
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Recommended Matches (≥85%)</span>
           </div>
           <h1 className="font-headline-lg text-xl sm:text-2xl font-bold text-on-surface">Recommended Opportunities</h1>
           <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
-            Opportunities scoring at least 85% verified fit based on Google Gemini resume analysis.
+            Opportunities with an estimated match score of at least 85%, based on available resume and job-listing evidence.
           </p>
         </div>
       </div>

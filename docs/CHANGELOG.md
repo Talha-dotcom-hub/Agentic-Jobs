@@ -2,6 +2,14 @@
 
 This file records repository and product changes. It is not a deployment-status report; production state must be checked in the hosting providers.
 
+## 2026-11-04 — Theme and repository professionalization
+
+- Unified light and dark component colors through shared design tokens and retained the premium tinted-surface identity in both themes.
+- Apply the operating system color preference until a user explicitly chooses a theme; persist an explicit choice without reloading.
+- Improve contrast for legacy surface, text, border, input, status, focus, and disabled-state utilities in light mode.
+- Document that optional telemetry and advertising cookies are not currently used.
+- Ignore browser automation snapshots so local inspection does not dirty the repository.
+
 ## 2026-11-02 — Repository maintenance
 
 - Added CI coverage for Node.js 24 and 26.

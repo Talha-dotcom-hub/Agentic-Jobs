@@ -70,7 +70,7 @@ export const DiscoverJobs: React.FC = () => {
         <div>
           <h1 className="font-headline-lg text-xl sm:text-2xl font-bold text-on-surface">Discover Opportunities</h1>
           <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
-            Discover vacancies from configured public feeds and supported employer job boards with deterministic AI telemetry.
+            Discover vacancies from configured public feeds and supported employer job boards, then review resume-aware match estimates.
           </p>
         </div>
 

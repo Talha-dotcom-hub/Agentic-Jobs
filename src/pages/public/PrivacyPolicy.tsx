@@ -35,9 +35,9 @@ export const PrivacyPolicy: React.FC = () => {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-bold text-white">4. Developer Credits</h2>
+        <h2 className="text-sm font-bold text-white">4. Project Ownership</h2>
         <p>
-          Agentic Jobs is built by M Talha Iftikhar and Laiba Asif.
+          Agentic Jobs is built by M Talha Iftikhar.
         </p>
       </section>
     </div>

@@ -16,6 +16,12 @@ import {
   ChevronDown,
   Sun,
   Moon,
+  LayoutDashboard,
+  Compass,
+  Bookmark,
+  FileText,
+  Briefcase,
+  MoreHorizontal,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -35,16 +41,26 @@ export const Header: React.FC = () => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchJobDrawer, setSearchJobDrawer] = useState<any | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
-    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
-  );
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    let savedTheme: string | null = null;
+    try {
+      savedTheme = window.localStorage.getItem('agentic-jobs-theme');
+    } catch {
+      savedTheme = null;
+    }
+    const initialTheme = savedTheme === 'light' || savedTheme === 'dark'
+      ? savedTheme
+      : document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = initialTheme;
+    return initialTheme;
+  });
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = nextTheme;
     document.documentElement.style.colorScheme = nextTheme;
     const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (themeColor) themeColor.content = nextTheme === 'dark' ? '#10120E' : '#F3F4EA';
+    if (themeColor) themeColor.content = nextTheme === 'dark' ? '#10120E' : '#EEF2F1';
     try {
       localStorage.setItem('agentic-jobs-theme', nextTheme);
     } catch (error) {
@@ -52,6 +68,30 @@ export const Header: React.FC = () => {
     }
     setTheme(nextTheme);
   };
+
+  useEffect(() => {
+    let hasExplicitPreference = false;
+    try {
+      const savedTheme = window.localStorage.getItem('agentic-jobs-theme');
+      hasExplicitPreference = savedTheme === 'light' || savedTheme === 'dark';
+    } catch (error) {
+      console.warn('Theme preference could not be read:', error);
+    }
+    if (hasExplicitPreference || !window.matchMedia) return;
+
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const syncSystemTheme = (event: MediaQueryListEvent) => {
+      const nextTheme = event.matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = nextTheme;
+      document.documentElement.style.colorScheme = nextTheme;
+      const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+      if (themeColor) themeColor.content = nextTheme === 'dark' ? '#10120E' : '#EEF2F1';
+      setTheme(nextTheme);
+    };
+
+    systemTheme.addEventListener('change', syncSystemTheme);
+    return () => systemTheme.removeEventListener('change', syncSystemTheme);
+  }, []);
 
   useEffect(() => {
     if (mobileMenuOpen) {
@@ -75,9 +115,19 @@ export const Header: React.FC = () => {
     'login',
     'signup',
     'forgot',
+    'reset-password',
   ];
 
   const isPublicPage = publicViews.includes(activeView);
+
+  const appNavItems: Array<{ view: ActiveView; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+    { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { view: 'discover', label: 'Discover', icon: Compass },
+    { view: 'saved', label: 'Saved', icon: Bookmark },
+    { view: 'resume', label: 'Resume', icon: FileText },
+    { view: 'applications', label: 'Applications', icon: Briefcase },
+    { view: 'more', label: 'More', icon: MoreHorizontal },
+  ];
 
   const getViewTitle = () => {
     switch (activeView) {
@@ -90,21 +140,22 @@ export const Header: React.FC = () => {
       case 'schedule': return 'Automated Scan Schedule';
       case 'notifications': return 'Notifications Center';
       case 'settings': return 'Account & Integration Settings';
+      case 'more': return 'More Workspace Tools';
       default: return '';
     }
   };
 
   return (
     <>
-      <header className="app-header sticky top-0 z-[70] isolate w-full bg-surface/85 backdrop-blur-xl border-b border-[#27272A] shadow-[0_1px_8px_rgba(0,0,0,0.35)]">
+      <header className="app-header sticky top-0 z-[70] isolate w-full border-b border-[rgba(43,52,64,0.85)] bg-[rgba(9,13,18,0.72)] backdrop-blur-xl shadow-[0_1px_0_rgba(199,255,90,0.06),0_20px_50px_rgba(0,0,0,0.26)]">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4 lg:gap-8">
           {/* Zone 1: Brand Wordmark & Breadcrumb */}
           <div className="flex items-center gap-4 shrink-0">
             <button
               onClick={() => setActiveView(user.isAuthenticated ? 'dashboard' : 'home')}
-              className="flex items-center gap-2.5 text-base sm:text-lg font-bold tracking-tight text-on-surface whitespace-nowrap shrink-0 hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2.5 text-base sm:text-lg font-bold tracking-tight text-[var(--app-text)] whitespace-nowrap shrink-0 hover:opacity-90 transition-opacity"
             >
-              <BrandMark className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-sm" />
+              <BrandMark className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-sm ring-1 ring-[rgba(199,255,90,0.22)]" />
               <span className="hidden xs:inline font-headline-sm">Agentic Jobs</span>
             </button>
 
@@ -163,18 +214,35 @@ export const Header: React.FC = () => {
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => setSearchModalOpen(true)}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-xs text-on-surface-variant transition-colors w-64 justify-between"
-              >
-                <div className="flex items-center gap-2">
-                  <Search className="w-3.5 h-3.5 text-primary" />
-                  <span>Search jobs, apps...</span>
+              <>
+                <div className="hidden xl:flex items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-elevated)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  {appNavItems.map(({ view, label, icon: Icon }) => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => setActiveView(view)}
+                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                        activeView === view ? 'bg-[rgba(199,255,90,0.12)] text-[var(--app-accent)]' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {label}
+                    </button>
+                  ))}
                 </div>
-                <kbd className="text-[10px] font-code-meta bg-surface-container-lowest px-1.5 py-0.5 rounded-[4px] border border-[#27272A] text-on-surface-variant">
-                  Ctrl K
-                </kbd>
-              </button>
+                <button
+                  onClick={() => setSearchModalOpen(true)}
+                  className="hidden xl:flex items-center gap-2 px-3.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-xs text-on-surface-variant transition-colors w-44 justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    <Search className="w-3.5 h-3.5 text-primary" />
+                    <span>Search jobs, apps...</span>
+                  </div>
+                  <kbd className="text-[10px] font-code-meta bg-surface-container-lowest px-1.5 py-0.5 rounded-[4px] border border-[#27272A] text-on-surface-variant">
+                    Ctrl K
+                  </kbd>
+                </button>
+              </>
             )}
           </div>
 
@@ -189,85 +257,81 @@ export const Header: React.FC = () => {
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <div className="hidden md:block"><PWAInstallButton /></div>
-            {user.isAuthenticated ? (
+            <div className="hidden 2xl:block"><PWAInstallButton /></div>
+            {user.isAuthenticated || isDemoMode ? (
               <div className="flex items-center gap-2 relative">
                 <button
                   onClick={() => setActiveView('notifications')}
                   className="relative p-2 text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-container transition-colors"
                   title="Notifications"
+                  aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
                 >
                   <Bell className="w-4 h-4" />
                   {unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    <span aria-hidden="true" className="absolute -right-1 -top-1 min-w-4 rounded-full border border-[var(--app-bg)] bg-[var(--app-accent)] px-1 text-center text-[9px] font-bold leading-4 text-[#10120E]">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
                   )}
                 </button>
 
-                {/* Profile Button Dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-xs text-on-surface transition-colors"
-                  >
-                    <div className="w-5 h-5 rounded-full bg-primary-container flex items-center justify-center text-[10px] font-bold text-on-primary-container">
-                      {user.name.charAt(0) || 'U'}
-                    </div>
-                    <span className="hidden sm:inline max-w-[100px] truncate font-medium">{user.name}</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-on-surface-variant" />
-                  </button>
-
-                  {profileDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-surface-container-high border border-[#27272A] rounded-xl shadow-2xl p-2 space-y-1 z-50 animate-in fade-in duration-150 text-xs">
-                      <div className="p-2 border-b border-[#27272A] text-[11px]">
-                        <div className="font-bold text-on-surface">{user.name}</div>
-                        <div className="text-on-surface-variant truncate font-code-meta">{user.email}</div>
+                {user.isAuthenticated ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-[6px] border border-[#27272A] bg-surface-container hover:bg-surface-container-high text-xs text-on-surface transition-colors"
+                    >
+                      <div className="w-5 h-5 rounded-full bg-primary-container flex items-center justify-center text-[10px] font-bold text-on-primary-container">
+                        {user.name.charAt(0) || 'U'}
                       </div>
-                      <button
-                        onClick={() => {
-                          setActiveView('settings');
-                          setProfileDropdownOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container text-left transition-colors"
-                      >
-                        <Settings className="w-3.5 h-3.5 text-primary" />
-                        <span>Settings</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setActiveView('resume');
-                          setProfileDropdownOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container text-left transition-colors"
-                      >
-                        <User className="w-3.5 h-3.5 text-tertiary" />
-                        <span>My Resume</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setProfileDropdownOpen(false);
-                          logoutUser();
-                        }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-error hover:bg-error-container/30 text-left transition-colors pt-1 border-t border-[#27272A]"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>Log Out</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : isDemoMode ? (
-              <div className="flex items-center gap-2">
-                <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] bg-primary/10 border border-primary/20 text-[11px] font-semibold text-primary">
-                  <Sparkles className="w-3 h-3 text-primary" />
-                  <span>Demo Mode</span>
-                </span>
-                <button
-                  onClick={exitDemoMode}
-                  className="px-2.5 py-1.5 text-xs font-semibold text-on-surface bg-surface-container hover:bg-surface-container-high border border-[#27272A] rounded-[6px] transition-colors whitespace-nowrap"
-                >
-                  Exit Demo
-                </button>
+                      <span className="hidden sm:inline max-w-[100px] truncate font-medium">{user.name}</span>
+                      <ChevronDown className="w-3.5 h-3.5 text-on-surface-variant" />
+                    </button>
+
+                    {profileDropdownOpen && (
+                      <div className="absolute right-0 mt-2 w-48 bg-surface-container-high border border-[#27272A] rounded-xl shadow-2xl p-2 space-y-1 z-50 animate-in fade-in duration-150 text-xs">
+                        <div className="p-2 border-b border-[#27272A] text-[11px]">
+                          <div className="font-bold text-on-surface">{user.name}</div>
+                          <div className="text-on-surface-variant truncate font-code-meta">{user.email}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setActiveView('settings');
+                            setProfileDropdownOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container text-left transition-colors"
+                        >
+                          <Settings className="w-3.5 h-3.5 text-primary" />
+                          <span>Settings</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveView('resume');
+                            setProfileDropdownOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container text-left transition-colors"
+                        >
+                          <User className="w-3.5 h-3.5 text-tertiary" />
+                          <span>My Resume</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setProfileDropdownOpen(false);
+                            logoutUser();
+                          }}
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-error hover:bg-error-container/30 text-left transition-colors pt-1 border-t border-[#27272A]"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Log Out</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="hidden sm:inline-flex items-center gap-1.5 rounded-[6px] border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                    <Sparkles className="h-3 w-3" />
+                    Demo Mode
+                  </span>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-1.5 sm:gap-2">
@@ -289,7 +353,7 @@ export const Header: React.FC = () => {
             {/* Mobile menu toggle button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-on-surface-variant hover:text-on-surface"
+              className="xl:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-on-surface-variant hover:text-on-surface"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -299,7 +363,7 @@ export const Header: React.FC = () => {
 
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-b border-[#27272A] bg-surface-container-high px-4 pt-2 pb-4 space-y-2 text-xs">
+          <div className="xl:hidden border-b border-[#27272A] bg-surface-container-high px-4 pt-2 pb-4 space-y-2 text-xs">
             <div className="pb-2"><PWAInstallButton /></div>
             {isPublicPage ? (
               <>
@@ -390,6 +454,12 @@ export const Header: React.FC = () => {
                   className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
                 >
                   Search Schedule
+                </button>
+                <button
+                  onClick={() => { setActiveView('notifications'); setMobileMenuOpen(false); }}
+                  className="block w-full text-left py-2 text-on-surface-variant hover:text-on-surface"
+                >
+                  Notifications
                 </button>
                 <button
                   onClick={() => { setActiveView('settings'); setMobileMenuOpen(false); }}

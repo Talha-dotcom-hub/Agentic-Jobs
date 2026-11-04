@@ -8,7 +8,7 @@
 
     <meta
       name="description"
-      content="AI-powered job discovery, resume matching, recommendation, and application-tracking platform."
+      content="AI-Powered SaaS Job Discovery, Resume Matching & Application Tracking Platform."
     />
     <meta
       property="og:title"
@@ -16,7 +16,7 @@
     />
     <meta
       property="og:description"
-      content="AI-powered job discovery, resume matching, recommendation, and application-tracking platform developed by M Talha Iftikhar."
+      content="AI-Powered SaaS Job Discovery, Resume Matching & Application Tracking Platform."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -52,7 +52,7 @@
         "@type": "WebApplication",
         "name": "Agentic Jobs",
         "url": "https://agenticjobs.netlify.app",
-        "description": "AI-powered job discovery, resume matching, recommendation, and application-tracking platform.",
+        "description": "AI-Powered SaaS Job Discovery, Resume Matching & Application Tracking Platform.",
         "applicationCategory": "BusinessApplication",
         "operatingSystem": "All",
         "creator": {
@@ -63,13 +63,19 @@
     </script>
     <script>
       try {
-        const theme = localStorage.getItem('agentic-jobs-theme') === 'light' ? 'light' : 'dark';
+        const savedTheme = localStorage.getItem('agentic-jobs-theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = savedTheme === 'light' || savedTheme === 'dark'
+          ? savedTheme
+          : prefersDark ? 'dark' : 'light';
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
         const themeColor = document.querySelector('meta[name="theme-color"]');
-        if (themeColor) themeColor.content = theme === 'dark' ? '#10120E' : '#F3F4EA';
+        if (themeColor) themeColor.content = theme === 'dark' ? '#10120E' : '#EEF2F1';
       } catch {
-        document.documentElement.dataset.theme = 'dark';
+        const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
       }
     </script>
   </head>

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { JobDetailDrawer } from '../../components/jobs/JobDetailDrawer';
 import { JobCardSkeleton } from '../../components/common/Skeleton';
-import { TiltCard } from '../../components/common/TiltCard';
 import {
   Sparkles,
   Compass,
@@ -114,18 +113,18 @@ export const Dashboard: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0 relative z-10">
+        <div className="flex w-full flex-row items-stretch gap-2 sm:w-auto sm:items-center sm:gap-2.5 shrink-0 relative z-10">
           <button
             onClick={runScanNow}
             disabled={schedule.status === 'running'}
-            className="px-3.5 py-2 rounded-[6px] bg-surface-container-high hover:bg-surface-container-highest border border-[#27272A] text-xs font-label-md font-medium text-on-surface transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            className="flex-1 px-2.5 py-2 rounded-[6px] bg-surface-container-high hover:bg-surface-container-highest border border-[#27272A] text-[11px] sm:flex-auto sm:px-3.5 sm:text-xs font-label-md font-medium text-on-surface transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${schedule.status === 'running' ? 'animate-spin text-primary' : 'text-primary'}`} />
             <span>{schedule.status === 'running' ? 'Scanning...' : 'Trigger Scan'}</span>
           </button>
           <button
             onClick={() => setActiveView('discover')}
-            className="px-3.5 py-2 rounded-[6px] bg-primary hover:bg-primary-fixed text-xs font-label-md font-semibold text-on-primary shadow-sm transition-colors flex items-center justify-center gap-1.5"
+            className="flex-1 px-2.5 py-2 rounded-[6px] bg-primary hover:bg-primary-fixed text-[11px] sm:flex-auto sm:px-3.5 sm:text-xs font-label-md font-semibold text-on-primary shadow-sm transition-colors flex items-center justify-center gap-1.5"
           >
             <span>Discover Jobs</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -140,7 +139,12 @@ export const Dashboard: React.FC = () => {
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
             <div className="font-body-sm">
               <strong className="font-semibold text-amber-200">Follow-Up Recommended ({overdueFollowups.length}): </strong>
-              You submitted applications over 5 days ago for {overdueFollowups.map(a => a.jobTitle).join(', ')}.
+              <span className="hidden sm:inline">
+                You submitted applications over 5 days ago for {overdueFollowups.map(a => a.jobTitle).join(', ')}.
+              </span>
+              <span className="sm:hidden">
+                {overdueFollowups.length} applications have been in Applied for more than 5 days.
+              </span>
             </div>
           </div>
           <button
@@ -160,13 +164,13 @@ export const Dashboard: React.FC = () => {
           className="w-full text-left p-3.5 sm:p-4 rounded-xl bg-surface-container-low border border-[#27272A] card-hover-effect space-y-1.5 group min-w-0 h-full"
         >
           <div className="flex items-center justify-between text-on-surface-variant font-label-md">
-            <span className="truncate">Matches Found</span>
+            <span className="truncate">Jobs Found</span>
             <Compass className="w-4 h-4 text-primary shrink-0" />
           </div>
           <div className="text-xl sm:text-2xl font-code-score font-bold text-on-surface tabular-nums">
             <AnimatedStat value={jobs.length} disabled={isDemoMode} />
           </div>
-          <div className="text-[11px] font-code-meta text-on-surface-variant truncate">Source feed telemetry</div>
+          <div className="text-[11px] font-code-meta text-on-surface-variant">Available listings</div>
         </button>
 
         <button
@@ -176,12 +180,7 @@ export const Dashboard: React.FC = () => {
         >
           <div className="flex items-center justify-between text-on-surface-variant font-label-md">
             <span className="truncate">High Matches</span>
-            <span
-              className="material-symbols-outlined text-[16px] text-primary"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              verified
-            </span>
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           </div>
           <div className="text-xl sm:text-2xl font-code-score font-bold text-primary tabular-nums">
             <AnimatedStat value={recommendedJobs.length} disabled={isDemoMode} />
@@ -216,7 +215,7 @@ export const Dashboard: React.FC = () => {
           <div className="text-xl sm:text-2xl font-code-score font-bold text-on-surface tabular-nums">
             <AnimatedStat value={applications.length} disabled={isDemoMode} />
           </div>
-          <div className="text-[11px] font-code-meta text-on-surface-variant truncate">
+          <div className="text-[11px] font-code-meta text-on-surface-variant">
             {appliedApps.length} Applied · {interviewApps.length} Interview
           </div>
         </button>
@@ -272,12 +271,7 @@ export const Dashboard: React.FC = () => {
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-headline-sm font-semibold text-on-surface flex items-center gap-2">
-              <span
-                className="material-symbols-outlined text-[16px] text-primary"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                verified
-              </span>
+              <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
               <span>Recommended High Match Opportunities</span>
             </h2>
             <button
@@ -360,7 +354,7 @@ export const Dashboard: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-body-sm text-xs text-on-surface-variant">
           <div>
             <strong className="text-on-surface block mb-0.5 font-label-md">1. Upload Resume</strong>
-            Navigate to <button onClick={() => setActiveView('resume')} className="text-primary underline hover:text-primary-fixed">My Resume</button> to upload your document for deterministic Gemini match scoring.
+            Navigate to <button onClick={() => setActiveView('resume')} className="text-primary underline hover:text-primary-fixed">My Resume</button> to compare your resume with job requirements and review AI match estimates.
           </div>
           <div>
             <strong className="text-on-surface block mb-0.5 font-label-md">2. Set Scan Schedule</strong>
@@ -368,7 +362,7 @@ export const Dashboard: React.FC = () => {
           </div>
           <div>
             <strong className="text-on-surface block mb-0.5 font-label-md">3. Track Applications</strong>
-            Log your manual applications under <button onClick={() => setActiveView('applications')} className="text-primary underline hover:text-primary-fixed">Applications</button> for 5-day follow-up telemetry alerts.
+            Log your manual applications under <button onClick={() => setActiveView('applications')} className="text-primary underline hover:text-primary-fixed">Applications</button> to review application status and follow-up reminders.
           </div>
         </div>
       </div>

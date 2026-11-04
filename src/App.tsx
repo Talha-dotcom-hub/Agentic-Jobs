@@ -2,7 +2,6 @@ import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
-import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
 import { isSupabaseConfigured } from './lib/supabase';
 
@@ -34,17 +33,17 @@ import { CookieBanner } from './components/common/CookieBanner';
 import { PWAStatus } from './components/common/PWAStatus';
 import { NotFound } from './pages/public/NotFound';
 
-import { Sparkles, Lock, ArrowRight, LayoutDashboard, Compass, Clock3, FileText, Bookmark, Briefcase, Bell } from 'lucide-react';
+import { Sparkles, Lock, ArrowRight, LayoutDashboard, Compass, FileText, Bookmark, MoreHorizontal } from 'lucide-react';
+import { More } from './pages/app/More';
 
 const MobileBottomNav: React.FC = () => {
-  const { activeView, setActiveView, notifications, savedJobIds } = useApp();
-  const unread = notifications.filter((n) => !n.read).length;
+  const { activeView, setActiveView, savedJobIds } = useApp();
   const items = [
-    { view: 'dashboard' as const, label: 'Home', icon: LayoutDashboard },
+    { view: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
     { view: 'discover' as const, label: 'Discover', icon: Compass },
     { view: 'saved' as const, label: 'Saved', icon: Bookmark, badge: savedJobIds.length },
     { view: 'resume' as const, label: 'Resume', icon: FileText },
-    { view: 'notifications' as const, label: 'Alerts', icon: Bell, badge: unread },
+    { view: 'more' as const, label: 'More', icon: MoreHorizontal },
   ];
 
   return (
@@ -200,6 +199,8 @@ const MainContent: React.FC = () => {
         return <Notifications />;
       case 'settings':
         return <Settings />;
+      case 'more':
+        return <More />;
 
       default:
         return <NotFound />;
@@ -223,15 +224,15 @@ const MainContent: React.FC = () => {
   return (
     <div className="app-shell min-h-screen flex flex-col font-sans">
       {isDemoMode && (
-        <div className="bg-gradient-to-r from-amber-500/20 via-violet-500/20 to-cyan-500/20 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-200 z-50">
+        <div className="border-b border-[rgba(199,255,90,0.18)] bg-[linear-gradient(90deg,rgba(199,255,90,0.08),rgba(129,140,248,0.08),rgba(160,212,255,0.08))] px-4 py-2 flex items-center justify-between text-xs text-[var(--app-text)] z-50">
           <div className="flex items-center gap-2 font-semibold">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+            <Sparkles className="w-4 h-4 text-[var(--app-accent)] shrink-0" />
             <span>Interactive Demo — Sample Data</span>
-            <span className="text-slate-400 font-normal hidden sm:inline">(Sample jobs, match scores &amp; application tracking)</span>
+            <span className="text-[var(--app-text-muted)] font-normal hidden sm:inline">(Sample jobs, match scores &amp; application tracking)</span>
           </div>
           <button
             onClick={exitDemoMode}
-            className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-medium transition-colors text-xs flex items-center gap-1"
+            className="px-3 py-1 rounded-lg border border-[rgba(199,255,90,0.2)] bg-[rgba(199,255,90,0.08)] hover:bg-[rgba(199,255,90,0.12)] text-[var(--app-text)] font-medium transition-colors text-xs flex items-center gap-1"
           >
             <span>Exit Demo</span>
           </button>
@@ -245,15 +246,14 @@ const MainContent: React.FC = () => {
           <div key={activeView} className="page-transition">{renderView()}</div>
         </main>
       ) : (
-        <div className="flex-1 max-w-7xl w-full mx-auto flex">
-          <Sidebar />
-          <main className="app-main flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
+        <div className="flex-1 w-full">
+          <main className="app-main mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 min-w-0">
             <div key={activeView} className="page-transition">{renderView()}</div>
           </main>
         </div>
       )}
 
-      <Footer />
+      {isPublicView && <Footer />}
       {(!isPublicView && (user.isAuthenticated || isDemoMode)) && <MobileBottomNav />}
       <ToastContainer />
       <CookieBanner />

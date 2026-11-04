@@ -106,7 +106,13 @@ export const Settings: React.FC = () => {
       console.warn('Gemini key status unavailable:', error?.message || error);
     }
   };
-  useEffect(() => { void refreshGeminiKeyStatus(); }, []);
+  useEffect(() => {
+    if (!user.isAuthenticated || isDemoMode) {
+      setGeminiKeyStatus(null);
+      return;
+    }
+    void refreshGeminiKeyStatus();
+  }, [user.isAuthenticated, isDemoMode]);
   const handleSaveGeminiKey = async () => {
     if (!geminiKey.trim()) {
       showToast('Paste your Gemini API key before saving.', 'error');

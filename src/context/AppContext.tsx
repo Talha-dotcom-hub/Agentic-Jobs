@@ -55,7 +55,8 @@ export type ActiveView =
   | 'applications'
   | 'schedule'
   | 'notifications'
-  | 'settings';
+  | 'settings'
+  | 'more';
 
 interface Toast {
   id: string;
@@ -249,7 +250,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const validViews: ActiveView[] = [
         'home', 'features', 'about', 'faq', 'contact', 'privacy', 'cookie', 'terms', 'accessibility',
         'login', 'signup', 'forgot', 'reset-password', 'dashboard', 'discover', 'recommended', 'saved',
-        'resume', 'applications', 'schedule', 'notifications', 'settings',
+        'resume', 'applications', 'schedule', 'notifications', 'settings', 'more',
       ];
       const nextView = stateView && validViews.includes(stateView)
         ? stateView
@@ -302,7 +303,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const validViews: ActiveView[] = [
         'home', 'features', 'about', 'faq', 'contact', 'privacy', 'cookie', 'terms', 'accessibility',
         'login', 'signup', 'forgot', 'reset-password', 'dashboard', 'discover', 'recommended', 'saved',
-        'resume', 'applications', 'schedule', 'notifications', 'settings'
+        'resume', 'applications', 'schedule', 'notifications', 'settings', 'more'
       ];
       if (validViews.includes(viewParam as ActiveView)) {
         const requestedView = viewParam as ActiveView;
@@ -425,7 +426,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setNotifications([]);
           setSources([]);
           const requestedView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
-          const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings'];
+          const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings','more'];
           if (!requestedView || !appViews.includes(requestedView)) {
             activeViewRef.current = 'dashboard';
             setActiveViewState('dashboard');
@@ -471,7 +472,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setAuthReady(true);
         if (window.location.pathname !== '/reset-password' && !window.location.hash.includes('type=recovery')) {
           const requestedView = new URLSearchParams(window.location.search).get('view') as ActiveView | null;
-          const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings'];
+          const appViews: ActiveView[] = ['dashboard','discover','recommended','saved','resume','applications','schedule','notifications','settings','more'];
           setActiveView(requestedView && appViews.includes(requestedView) ? requestedView : 'dashboard');
         }
       } else if (event === 'PASSWORD_RECOVERY') {
@@ -508,75 +509,91 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let cancelled = false;
 
     const fetchUserData = async () => {
-      try {
-        const [discoveredJobs, savedJobs] = await Promise.all([
-          fetchDiscoveredJobsApi(),
-          fetchSavedJobsApi(),
-        ]);
-        if (cancelled) return;
-        const savedIds = savedJobs.map((job) => job.id);
-        setSavedJobIds(savedIds);
-        const allJobs = new Map<string, Job>();
-        for (const job of discoveredJobs) allJobs.set(job.id, job);
-        for (const job of savedJobs) if (!allJobs.has(job.id)) allJobs.set(job.id, job);
-        setJobs(Array.from(allJobs.values()).map((job) => ({ ...job, saved: savedIds.includes(job.id) })));
-      } catch (err) {
-        if (cancelled) return;
-        console.warn('Saved/discovered jobs sync failed:', err);
-        showToast('Could not load saved or discovered jobs. Try refreshing after checking the backend.', 'error');
-      }
+      const syncJobs = async () => {
+        try {
+          const [discoveredJobs, savedJobs] = await Promise.all([
+            fetchDiscoveredJobsApi(),
+            fetchSavedJobsApi(),
+          ]);
+          if (cancelled) return;
+          const savedIds = savedJobs.map((job) => job.id);
+          setSavedJobIds(savedIds);
+          const allJobs = new Map<string, Job>();
+          for (const job of discoveredJobs) allJobs.set(job.id, job);
+          for (const job of savedJobs) if (!allJobs.has(job.id)) allJobs.set(job.id, job);
+          setJobs(Array.from(allJobs.values()).map((job) => ({ ...job, saved: savedIds.includes(job.id) })));
+        } catch (err) {
+          if (cancelled) return;
+          console.warn('Saved/discovered jobs sync failed:', err);
+          showToast('Could not load saved or discovered jobs. Try refreshing after checking the backend.', 'error');
+        }
+      };
 
-      if (cancelled) return;
-      try {
-        const { data: apps, error: appsError } = await supabase
-          .from('applications').select('*').eq('user_id', user.id).order('applied_date', { ascending: false });
-        if (appsError) throw appsError;
-        if (cancelled) return;
-        setApplications((apps || []).map((a: any) => ({
-          id: a.id, jobId: a.job_id || undefined, jobTitle: a.job_title, company: a.company,
-          location: a.location || 'Not specified', originalUrl: a.original_url || '',
-          status: a.status || 'Applied', appliedDate: a.applied_date || new Date().toISOString(),
-          lastUpdatedDate: a.last_updated_date || a.applied_date || new Date().toISOString(),
-          notes: a.notes || '', salary: a.salary || '', contactPerson: a.contact_person || '',
-          followUpNeeded: a.follow_up_needed || false,
-        })));
-      } catch (err) {
-        if (!cancelled) console.warn('Applications sync failed:', err);
-      }
+      const syncApplications = async () => {
+        try {
+          const { data: apps, error: appsError } = await supabase
+            .from('applications').select('*').eq('user_id', user.id).order('applied_date', { ascending: false });
+          if (appsError) throw appsError;
+          if (cancelled) return;
+          setApplications((apps || []).map((a: any) => ({
+            id: a.id, jobId: a.job_id || undefined, jobTitle: a.job_title, company: a.company,
+            location: a.location || 'Not specified', originalUrl: a.original_url || '',
+            status: a.status || 'Applied', appliedDate: a.applied_date || new Date().toISOString(),
+            lastUpdatedDate: a.last_updated_date || a.applied_date || new Date().toISOString(),
+            notes: a.notes || '', salary: a.salary || '', contactPerson: a.contact_person || '',
+            followUpNeeded: a.follow_up_needed || false,
+          })));
+        } catch (err) {
+          if (!cancelled) console.warn('Applications sync failed:', err);
+        }
+      };
 
-      if (cancelled) return;
-      try {
-        const { data: notifs, error: notificationError } = await supabase
-          .from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-        if (notificationError) throw notificationError;
-        if (cancelled) return;
-        setNotifications((notifs || []).map((n: any) => ({
-          id: n.id, title: n.title, message: n.message, read: Boolean(n.read),
-          type: n.type || 'system', timestamp: n.created_at, link: n.link || undefined,
-        })));
-      } catch (err) {
-        if (!cancelled) console.warn('Notifications sync failed:', err);
-      }
+      const syncNotifications = async () => {
+        try {
+          const { data: notifs, error: notificationError } = await supabase
+            .from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+          if (notificationError) throw notificationError;
+          if (cancelled) return;
+          setNotifications((notifs || []).map((n: any) => ({
+            id: n.id, title: n.title, message: n.message, read: Boolean(n.read),
+            type: n.type || 'system', timestamp: n.created_at, link: n.link || undefined,
+          })));
+        } catch (err) {
+          if (!cancelled) console.warn('Notifications sync failed:', err);
+        }
+      };
 
-      if (cancelled) return;
-      try {
-        const savedSchedule = await fetchScanSchedule();
-        if (cancelled) return;
-        setSchedule(savedSchedule);
-      } catch (err) {
-        if (cancelled) return;
-        console.warn('Schedule sync failed:', err);
-        showToast('Could not load your saved scan schedule.', 'error');
-      }
+      const syncSchedule = async () => {
+        try {
+          const savedSchedule = await fetchScanSchedule();
+          if (cancelled) return;
+          setSchedule(savedSchedule);
+        } catch (err) {
+          if (cancelled) return;
+          console.warn('Schedule sync failed:', err);
+          showToast('Could not load your saved scan schedule.', 'error');
+        }
+      };
 
-      if (cancelled) return;
-      try {
-        setSources(await fetchSourcesApi());
-      } catch (err) {
-        if (cancelled) return;
-        console.warn('Source configuration lookup failed:', err);
-        setSources([]);
-      }
+      const syncSources = async () => {
+        try {
+          const sources = await fetchSourcesApi();
+          if (cancelled) return;
+          setSources(sources);
+        } catch (err) {
+          if (cancelled) return;
+          console.warn('Source configuration lookup failed:', err);
+          setSources([]);
+        }
+      };
+
+      await Promise.all([
+        syncJobs(),
+        syncApplications(),
+        syncNotifications(),
+        syncSchedule(),
+        syncSources(),
+      ]);
     };
     void fetchUserData();
     return () => { cancelled = true; };

@@ -40,3 +40,11 @@ test('scan completion only emits a final no-match message after complete resume 
   const appContext = fs.readFileSync('src/context/AppContext.tsx', 'utf8');
   assert.match(appContext, /Partial discovery:.*No definitive no-match result is available/);
 });
+
+test('selected-job state restores from the URL and preserves scroll position for back navigation', () => {
+  const selectedJob = fs.readFileSync('src/hooks/useSelectedJob.ts', 'utf8');
+  assert.match(selectedJob, /new URLSearchParams\(window.location.search\)\.get\(JOB_QUERY_PARAMETER\)/);
+  assert.match(selectedJob, /sessionStorage\.setItem\(key, String\(currentScrollY\)\)/);
+  assert.match(selectedJob, /popstate.*syncSelectedJob/);
+  assert.match(selectedJob, /setSelectedJobId\(\(current\) => \(current === nextJobId \? current : nextJobId\)\)/);
+});

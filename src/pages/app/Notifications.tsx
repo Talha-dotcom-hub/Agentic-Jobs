@@ -28,7 +28,7 @@ export const Notifications: React.FC = () => {
             <span>Notifications Center</span>
           </h1>
           <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
-            In-app alerts, high match opportunity telemetry, and 5-day follow-up reminders.
+            In-app match alerts, scan updates, and 5-day follow-up reminders.
           </p>
         </div>
 

@@ -28,17 +28,26 @@
 
 ## ✨ What is Agentic Jobs?
 
-**Agentic Jobs** is a developer-oriented AI job-finding project designed to turn a candidate's resume into a reusable career profile, discover relevant vacancies, explain potential role fit, and organize the job-search workflow in one place.
+**Agentic Jobs** is a resume-aware job discovery and application-tracking workspace. It turns a candidate's resume into a reusable career profile, discovers opportunities from configured sources, explains potential role fit, and organizes the job-search workflow in one place.
 
 The goal is to move beyond a basic job board: after a user configures their profile, AI credentials, and preferred schedule, the backend can discover new opportunities, evaluate them against the user's actual background, persist results, and notify the user when a scan completes—provided the backend worker and scheduling infrastructure are configured and running.
 
 > **Important:** AI match scores are estimates for prioritizing opportunities. They are not hiring probabilities, guarantees, or a substitute for reviewing the job description yourself.
 
-<div align="center">
-  <img src="src/assets/images/hero_dashboard_preview_1792923568924.jpg" alt="Agentic Jobs dashboard preview" width="920" />
-  <br />
-  <sub>Dashboard preview from the repository assets.</sub>
-</div>
+## Product screenshots
+
+These are viewport captures of the locally running interactive demo. The demo is explicitly marked and uses sample records; it is not evidence of live provider, account, or production data.
+
+<table>
+  <tr>
+    <td align="center"><strong>Desktop · 1440 × 900</strong></td>
+    <td align="center"><strong>Mobile · 390 × 844</strong></td>
+  </tr>
+  <tr>
+    <td><img src="public/assets/agentic-jobs-dashboard-desktop.webp" alt="Agentic Jobs interactive demo dashboard at desktop size" /></td>
+    <td><img src="public/assets/agentic-jobs-dashboard-mobile.webp" alt="Agentic Jobs interactive demo dashboard at mobile size" /></td>
+  </tr>
+</table>
 
 <p align="center"><a href="https://agenticjobs.netlify.app/"><strong>↗ Explore the deployed app</strong></a></p>
 
@@ -57,7 +66,7 @@ The goal is to move beyond a basic job board: after a user configures their prof
 - [Security and privacy](#-security-and-privacy)
 - [Project structure](#-project-structure)
 - [Known operational requirements](#-known-operational-requirements)
-- [Team](#-team)
+- [Creator](#-creator)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -406,24 +415,12 @@ Agentic-Jobs/
 - **Match scores are estimates:** never interpret them as a hiring outcome prediction.
 - **License:** the repository currently has no `LICENSE` file. Until a license is added, don't assume the source is released under an open-source license or that broad reuse permission is granted.
 
-## 👥 Project team
+## 👤 Creator
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center">
-        <strong>M Talha Iftikhar</strong><br />
-        <sub>Project developer &amp; software architect</sub><br /><br />
-        <a href="https://github.com/Talha-dotcom-hub"><img src="https://img.shields.io/badge/GitHub-Talha--dotcom--hub-181717?style=flat-square&logo=github&logoColor=white" alt="Talha GitHub" /></a>
-        <a href="https://www.linkedin.com/in/talha-dev-pk"><img src="https://img.shields.io/badge/LinkedIn-Profile-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="Talha LinkedIn" /></a>
-      </td>
-      <td align="center">
-        <strong>Laiba Asif</strong><br />
-        <sub>Project team</sub>
-      </td>
-    </tr>
-  </table>
-</div>
+Agentic Jobs was created by **M Talha Iftikhar**.
+
+<a href="https://github.com/Talha-dotcom-hub"><img src="https://img.shields.io/badge/GitHub-Talha--dotcom--hub-181717?style=flat-square&logo=github&logoColor=white" alt="M Talha Iftikhar on GitHub" /></a>
+<a href="https://www.linkedin.com/in/talha-dev-pk"><img src="https://img.shields.io/badge/LinkedIn-Profile-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="M Talha Iftikhar on LinkedIn" /></a>
 
 ## 🤝 Contributing
 

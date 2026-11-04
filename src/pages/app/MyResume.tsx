@@ -6,6 +6,7 @@ import {
   Sparkles,
   ShieldCheck,
   CheckCircle2,
+  ListChecks,
   RefreshCw,
   Save,
   Trash2,
@@ -283,12 +284,7 @@ export const MyResume: React.FC = () => {
           <div className="p-4 sm:p-5 rounded-xl bg-surface-container border border-[#27272A] space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-headline-sm text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                <span
-                  className="material-symbols-outlined text-[16px] text-primary"
-                  style={{ fontVariationSettings: "'FILL' 1" }}
-                >
-                  verified
-                </span>
+                <ListChecks className="h-4 w-4 text-primary" aria-hidden="true" />
                 <span>Extracted Core Competencies</span>
               </h3>
               <span className="font-code-meta text-[11px] text-on-surface-variant tabular-nums">

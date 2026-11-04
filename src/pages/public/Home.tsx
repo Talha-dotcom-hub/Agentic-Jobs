@@ -2,7 +2,6 @@
 import { useApp } from '../../context/AppContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { TiltCard } from '../../components/common/TiltCard';
-import heroDashboardPreview from '../../assets/images/hero_dashboard_preview_1792923568924.jpg';
 import {
   Sparkles,
   Compass,
@@ -192,15 +191,21 @@ export const Home: React.FC = () => {
           </button>
         </div>
 
-        {/* Dashboard preview image */}
-        <div className="pt-4 max-w-4xl mx-auto">
-          <div className="relative rounded-xl p-1.5 bg-[#141416] border border-[#27272A] shadow-2xl overflow-hidden group">
-            <img
-              src={heroDashboardPreview}
-              alt="Agentic Jobs SaaS Dashboard Preview"
-              className="rounded-lg w-full object-cover shadow-inner group-hover:scale-[1.003] transition-transform duration-700"
-            />
-            <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/5 pointer-events-none" />
+        {/* Genuine dashboard preview image */}
+        <div className="pt-4 max-w-5xl mx-auto">
+          <div className="relative rounded-[20px] p-1.5 bg-[#141416] border border-[#27272A] shadow-2xl overflow-hidden group">
+            <picture>
+              <source
+                media="(max-width: 640px)"
+                srcSet="/assets/agentic-jobs-dashboard-mobile.webp"
+              />
+              <img
+                src="/assets/agentic-jobs-dashboard-desktop.webp"
+                alt="Agentic Jobs demo dashboard showing job matches and application tracking"
+                className="rounded-[14px] w-full object-cover shadow-inner group-hover:scale-[1.003] transition-transform duration-700"
+              />
+            </picture>
+            <div className="absolute inset-0 rounded-[20px] ring-1 ring-inset ring-white/5 pointer-events-none" />
           </div>
         </div>
       </section>
@@ -340,7 +345,7 @@ export const Home: React.FC = () => {
         <div className="p-6 sm:p-8 rounded-2xl bg-[#141416] border border-[#27272A] flex flex-col items-center text-center space-y-4">
           <div className="space-y-1">
             <h2 className="text-xl sm:text-2xl font-bold text-white">Built by</h2>
-            <p className="text-sm text-[#A1A1AA]">Built by M Talha Iftikhar &amp; Laiba Asif</p>
+            <p className="text-sm text-[#A1A1AA]">Built by M Talha Iftikhar</p>
           </div>
           <TiltCard>
             <div className="px-8 py-6 rounded-xl bg-[#0A0A0B] border border-[#27272A] text-center min-w-[280px] max-w-[320px] space-y-2">
@@ -391,4 +396,3 @@ export const Home: React.FC = () => {
     </div>
   );
 };
-

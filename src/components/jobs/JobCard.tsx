@@ -1,7 +1,7 @@
 import React from 'react';
 import { Job } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { Bookmark, ExternalLink, CheckCircle, PlusCircle, Copy, Building } from 'lucide-react';
+import { Bookmark, ExternalLink, CheckCircle, PlusCircle, Copy, Building, BarChart3 } from 'lucide-react';
 import { isQualifyingMatchScore } from '../../../shared/matchThreshold';
 
 interface JobCardProps {
@@ -74,15 +74,10 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onSelectJob }) => {
             title={
               job.matchScore === null
                 ? 'No match evaluation exists yet'
-                : 'Click to view deterministic AI match telemetry'
+                : 'Click to view available resume match details'
             }
           >
-            <span
-              className="material-symbols-outlined text-[14px]"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              analytics
-            </span>
+            <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{job.matchScore === null ? 'Not scored' : `${job.matchScore}% Match`}</span>
           </button>
         </div>

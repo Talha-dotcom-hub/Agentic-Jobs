@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Job } from '../../types';
 import { useApp } from '../../context/AppContext';
 import {
@@ -6,6 +7,9 @@ import {
   Sparkles,
   ExternalLink,
   CheckCircle2,
+  BadgeCheck,
+  BarChart3,
+  SlidersHorizontal,
   AlertTriangle,
   Bookmark,
   PlusCircle,
@@ -71,7 +75,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
     setEvaluating(true);
     try {
       await evaluateJobMatch(job.id);
-      showToast('Telemetry match evaluated successfully.', 'success');
+      showToast('Resume match evaluated successfully.', 'success');
     } catch (error: any) {
       showToast(error?.message || 'AI match evaluation failed.', 'error');
     } finally {
@@ -97,20 +101,26 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
     ? circumference - (circumference * Math.min(Math.max(score, 0), 100)) / 100
     : circumference;
 
-  // Breakdown competencies
-  const skillsList = job.skillsRequired && job.skillsRequired.length > 0
-    ? job.skillsRequired
-    : ['TypeScript', 'Distributed Architecture', 'API Design', 'Cloud Infrastructure'];
+  const matchingEvidence = match?.matchingEvidence ?? [];
+  const jobRequirements = job.skillsRequired ?? [];
+  const potentialGaps = match?.potentialSkillGaps ?? [];
+  const skillsToDisplay = match ? matchingEvidence : jobRequirements;
+  const matchAssessment = score === null
+    ? 'No match estimate'
+    : score >= 85
+    ? 'High estimated fit'
+    : score >= 70
+    ? 'Potential match'
+    : 'Review match evidence';
+  const matchBadge = score === null
+    ? 'Pending evaluation'
+    : score >= 85
+    ? '≥85% estimate'
+    : score >= 70
+    ? '70–84% estimate'
+    : '<70% estimate';
 
-  const confirmedCompetencies = match && match.matchingEvidence && match.matchingEvidence.length > 0
-    ? match.matchingEvidence
-    : skillsList.slice(0, 4);
-
-  const potentialGaps = match && match.potentialSkillGaps && match.potentialSkillGaps.length > 0
-    ? match.potentialSkillGaps
-    : ['Domain-specific internal toolchains', 'Target ecosystem tooling (preferred)'];
-
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -131,7 +141,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
             </button>
             <div className="flex items-center gap-2 min-w-0">
               <span className="font-label-md text-on-surface-variant uppercase tracking-wider truncate">
-                Telemetry Dossier
+                Job details
               </span>
               <span className="text-on-surface-variant font-code-meta text-xs">/</span>
               <span className="font-code-meta text-xs text-primary font-medium truncate">
@@ -168,7 +178,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
             {/* Ambient telemetry glow */}
             <div className="absolute -right-12 -top-12 w-36 h-36 bg-primary/10 rounded-full blur-2xl pointer-events-none" />
 
-            {/* Header: Logo, Company & Verified Indicator */}
+            {/* Header: Logo and company */}
             <div className="flex items-start justify-between gap-3 relative z-10">
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="w-12 h-12 rounded-xl bg-surface-container-lowest border border-[#27272A] flex items-center justify-center p-2 flex-shrink-0 shadow-sm text-on-surface font-bold text-sm">
@@ -187,12 +197,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
                     <span className="font-label-md text-on-surface-variant uppercase tracking-wider truncate">
                       {job.company}
                     </span>
-                    <span
-                      className="material-symbols-outlined text-[14px] text-primary"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      verified
-                    </span>
+                    {job.verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Source verified" />}
                   </div>
                   <h2 className="font-headline-lg-mobile sm:font-headline-lg text-on-surface font-semibold truncate leading-tight mt-0.5">
                     {job.title}
@@ -201,7 +206,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
               </div>
             </div>
 
-            {/* Metadata Telemetry Chips */}
+            {/* Job metadata */}
             <div className="flex flex-wrap items-center gap-2 mt-4 relative z-10">
               <span className="inline-flex items-center gap-1.5 bg-surface-container px-2.5 py-1 rounded-[6px] text-on-surface font-code-meta text-xs border border-[#27272A]/80">
                 <Globe className="w-3.5 h-3.5 text-tertiary" />
@@ -234,18 +239,18 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
             </div>
           </section>
 
-          {/* Interactive Transparency Engine: Algorithmic Resume Match */}
+          {/* Resume match details */}
           <section className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[18px] text-primary">analytics</span>
+                <BarChart3 className="h-[18px] w-[18px] text-primary" aria-hidden="true" />
                 <h3 className="font-headline-sm text-on-surface font-medium">
-                  Algorithmic Resume Match
+                  Resume Match Estimate
                 </h3>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-code-meta text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-[4px] border border-[#27272A]">
-                  {match ? 'v4.2 Audited' : 'Pending Evaluation'}
+                  {match ? 'AI-estimated fit' : 'Pending Evaluation'}
                 </span>
                 <button
                   onClick={handleReevaluate}
@@ -300,26 +305,16 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
 
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-headline-sm text-on-surface font-semibold">
-                      {score !== null && score !== undefined && score >= 85
-                        ? 'Tier-1 Alignment'
-                        : score !== null && score !== undefined && score >= 70
-                        ? 'Tier-2 Alignment'
-                        : 'Review Assessment'}
-                    </span>
+                    <span className="font-headline-sm text-on-surface font-semibold">{matchAssessment}</span>
                     <span className="px-2 py-0.5 rounded-[4px] bg-primary-container/20 text-primary font-label-sm font-semibold border border-primary/20">
-                      {score !== null && score !== undefined && score >= 85
-                        ? 'High Priority'
-                        : score !== null && score !== undefined && score >= 70
-                        ? 'Qualified Fit'
-                        : 'Calibrating'}
+                      {matchBadge}
                     </span>
                   </div>
                   <p className="font-body-sm text-on-surface-variant leading-relaxed">
                     {match?.summary ||
                       (score !== null && score !== undefined
                         ? `Evaluation completed with ${score}% alignment to requirements based on your extracted resume profile.`
-                        : 'No AI evaluation has been stored yet for this vacancy. Trigger an evaluation to generate deterministic telemetry reasoning.')}
+                        : 'No AI evaluation has been stored yet for this vacancy. Run an evaluation to review the available match details.')}
                   </p>
                 </div>
               </div>
@@ -327,51 +322,62 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
               {/* Explanatory Divider */}
               <div className="h-px bg-[#27272A] w-full" />
 
-              {/* Matched Skills Section */}
+              {/* Resume evidence or source-listed job requirements */}
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="font-label-md text-on-surface font-medium flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
-                    Confirmed Core Competencies ({confirmedCompetencies.length})
+                    {match ? `Resume Match Evidence (${matchingEvidence.length})` : `Job Requirements (${jobRequirements.length})`}
                   </span>
-                  {score !== null && score !== undefined && (
-                    <span className="font-code-meta text-primary tabular-nums">
-                      +{(score * 0.2).toFixed(1)} pts
-                    </span>
-                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {confirmedCompetencies.map((item, idx) => (
+                  {skillsToDisplay.map((item, idx) => (
                     <span
                       key={idx}
-                      className="bg-surface-container px-2.5 py-1 rounded-[6px] text-on-surface font-code-meta text-xs flex items-center gap-1.5 border border-[#27272A]/70"
+                      className="max-w-full min-w-0 bg-surface-container px-2.5 py-1 rounded-[6px] text-on-surface font-code-meta text-xs flex items-center gap-1.5 border border-[#27272A]/70"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                      <span className="truncate">{item}</span>
+                      <span className="min-w-0 whitespace-normal break-words">{item}</span>
                     </span>
                   ))}
+                  {match && matchingEvidence.length === 0 && (
+                    <p className="text-xs text-on-surface-variant">
+                      No resume match evidence was returned for this evaluation.
+                    </p>
+                  )}
+                  {!match && jobRequirements.length === 0 && (
+                    <p className="text-xs text-on-surface-variant">
+                      No skill requirements were included in this job listing.
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* Skill Delta & Growth Areas */}
+              {/* Potential skill gaps from the evaluation */}
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="font-label-md text-on-surface font-medium flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[15px] text-secondary">tune</span>
-                    Identified Gaps &amp; Growth Areas ({potentialGaps.length})
+                    <SlidersHorizontal className="h-[15px] w-[15px] text-secondary" aria-hidden="true" />
+                    Potential Skill Gaps ({potentialGaps.length})
                   </span>
-                  <span className="font-code-meta text-on-surface-variant">Neutral Weight</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {potentialGaps.map((item, idx) => (
                     <span
                       key={idx}
-                      className="bg-surface-container-low px-2.5 py-1 rounded-[6px] text-secondary font-code-meta text-xs flex items-center gap-1.5 border border-[#27272A]/50"
+                      className="max-w-full min-w-0 bg-surface-container-low px-2.5 py-1 rounded-[6px] text-secondary font-code-meta text-xs flex items-center gap-1.5 border border-[#27272A]/50"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-secondary flex-shrink-0" />
-                      <span className="truncate">{item}</span>
+                      <span className="min-w-0 whitespace-normal break-words">{item}</span>
                     </span>
                   ))}
+                  {potentialGaps.length === 0 && (
+                    <p className="text-xs text-on-surface-variant">
+                      {match
+                        ? 'No potential skill gaps were returned for this evaluation.'
+                        : 'Run an evaluation to see potential skill gaps based on your resume and this listing.'}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -381,7 +387,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
                 onClick={() => setShowAuditMatrix(!showAuditMatrix)}
                 className="w-full py-2 bg-surface-container hover:bg-surface-container-high rounded-[6px] flex items-center justify-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors font-label-sm border border-[#27272A]/60"
               >
-                <span>{showAuditMatrix ? 'Hide Telemetry Reasoning Matrix' : 'Show Telemetry Reasoning Matrix'}</span>
+                <span>{showAuditMatrix ? 'Hide Match Details' : 'Show Match Details'}</span>
                 <ChevronDown
                   className={`w-4 h-4 transition-transform duration-200 ${
                     showAuditMatrix ? 'rotate-180' : ''
@@ -397,7 +403,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
                     <div className="flex flex-col gap-0.5 text-xs">
                       <span className="text-on-surface font-medium font-label-md">Cross-Verification Method</span>
                       <span>
-                        Synthesized against verified profile skills, past experience chronology, and primary ATS vacancy parameters. Fit score represents algorithmic requirement overlap, not an interview guarantee.
+                        Estimated from available resume skills and experience alongside the job listing. It is not a hiring probability or interview guarantee.
                       </span>
                     </div>
                   </div>
@@ -420,7 +426,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
           {job.sourceLinks && job.sourceLinks.length > 1 && (
             <section className="flex flex-col gap-2">
               <h4 className="font-label-md text-on-surface-variant uppercase tracking-wider">
-                Multi-Channel ATS Telemetry
+                Job-Source Information
               </h4>
               <div className="flex flex-wrap gap-2">
                 {job.sourceLinks.map((sl) => (
@@ -511,6 +517,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({ job, onClose }
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

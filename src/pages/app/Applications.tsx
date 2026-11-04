@@ -68,7 +68,7 @@ export const Applications: React.FC = () => {
             <span>Application Tracking ({applications.length})</span>
           </h1>
           <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
-            Track submission dates, interview rounds, offers, and automatic 5-day follow-up telemetry.
+            Track submission dates, interview rounds, offers, and 5-day follow-up reminders.
           </p>
         </div>
 

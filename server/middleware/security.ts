@@ -50,7 +50,8 @@ export function applySecurityHeaders(req: Request, res: Response, next: NextFunc
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   // CSP inline/eval allowances are retained until browser regression testing can safely tighten them.
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' ws://localhost:* wss://localhost:* https://*.supabase.co wss://*.supabase.co https://api.apify.com https://linkedin-data-api.p.rapidapi.com https://remotive.com;");
+  const workerSrc = process.env.NODE_ENV === 'production' ? "worker-src 'self'; " : "worker-src 'self' blob:; ";
+  res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; ${workerSrc}connect-src 'self' ws://localhost:* wss://localhost:* https://*.supabase.co wss://*.supabase.co https://api.apify.com https://linkedin-data-api.p.rapidapi.com https://remotive.com;`);
   next();
 }
 

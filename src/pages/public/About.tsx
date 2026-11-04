@@ -19,7 +19,7 @@ export const About: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed">
-          Agentic Jobs was built by M Talha Iftikhar and Laiba Asif as a full-stack SaaS application combining React, TypeScript, Express, and Google Gemini SDK integrations.
+          Agentic Jobs is an AI-powered SaaS job discovery and application tracking platform built by M Talha Iftikhar using React, TypeScript, Express, and Google Gemini SDK integrations.
         </p>
 
         <div className="pt-2">
